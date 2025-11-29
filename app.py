@@ -59,8 +59,7 @@ with st.sidebar:
     st.header("⚙️ Configurazione")
     
     with st.expander("🔑 Gestione Chiave API", expanded=False):
-        # Inserisci qui la tua chiave se vuoi che sia precaricata, altrimenti lascia stringa vuota ""
-        default_key = "AIzaSyCHfBd6FtseBlXg75yG5Ln3grlvYK9XCHk" 
+        default_key = "" 
         api_key = st.text_input("Google API Key", value=default_key, type="password")
 
     st.markdown("---")
@@ -216,4 +215,5 @@ def main():
         st.info("👈 Carica un PDF nella barra laterale per attivare il Tutor.")
 
 if __name__ == '__main__':
+
     main()

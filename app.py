@@ -58,6 +58,7 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_system_instruction(mode, style, num_questions):
+    """Genera solo la parte 'istruttiva' del prompt"""
     style_map = {
         "Sintetico": "Sii estremamente conciso. Usa elenchi puntati.",
         "Bilanciato": "Fornisci una risposta chiara e completa.",
@@ -84,7 +85,7 @@ def main():
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Il tuo assistente universitario personale con Gemini 2.5 Pro</div>', unsafe_allow_html=True)
 
-    # Inizializza variabili di stato per i controlli se non esistono
+    # Inizializza variabili di stato per i settaggi (se non esistono)
     if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
     if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
     if "num_questions" not in st.session_state: st.session_state.num_questions = 5
@@ -103,11 +104,11 @@ def main():
 
         st.markdown("---")
         
-        # --- MODIFICA: USO DI FORM PER EVITARE RELOAD IMMEDIATI ---
+        # --- MODIFICA IMPORTANTE: FORM PER LE IMPOSTAZIONI ---
+        # L'uso di st.form impedisce il ricaricamento immediato dell'app al click
         with st.form(key="settings_form"):
             st.subheader("Impostazioni Studio")
             
-            # Nota: Ho rimosso 'on_change=reset_conversation' per evitare cancellazioni involontarie
             new_study_mode = st.radio(
                 "🧠 Modalità Studio:",
                 ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
@@ -120,21 +121,19 @@ def main():
                 value=st.session_state.response_style
             )
             
-            # Mostriamo sempre lo slider nel form per semplicità, ma lo useremo solo in modalità Quiz
             new_num_questions = st.slider("Numero Domande (solo per Quiz):", 5, 20, st.session_state.num_questions)
             
+            # Questo bottone è l'unico che scatenerà il ricaricamento
             submit_button = st.form_submit_button(label="✅ Applica Modifiche")
             
             if submit_button:
-                # Aggiorniamo lo stato solo alla pressione del tasto
                 st.session_state.study_mode = new_study_mode
                 st.session_state.response_style = new_response_style
                 st.session_state.num_questions = new_num_questions
-                # Opzionale: Se vuoi resettare la chat SOLO quando si preme applica, decommenta la riga sotto:
-                # reset_conversation() 
                 st.rerun()
 
         st.markdown("---")
+        # Tasto per resettare esplicitamente la chat
         if st.button("🔄 Cancella Chat e Ricomincia", use_container_width=True):
             reset_conversation()
             st.rerun()
@@ -183,7 +182,7 @@ def main():
         vectorstore = st.session_state.vectorstore
         rag_chain = build_rag_chain(vectorstore)
         
-        # Recupero parametri dallo stato (aggiornati dal form)
+        # Recupero i parametri dallo stato salvato (NON dai widget diretti)
         system_instr = get_system_instruction(
             st.session_state.study_mode, 
             st.session_state.response_style, 
@@ -213,6 +212,7 @@ def main():
                 st.markdown(user_input)
 
             with chat_container.chat_message("assistant", avatar="🤖"):
+                # Durante questa esecuzione, Streamlit bloccherà automaticamente la sidebar
                 response_stream = rag_chain.stream({
                     "input": user_input,
                     "system_instruction": system_instr

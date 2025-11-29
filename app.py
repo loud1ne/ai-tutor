@@ -21,6 +21,9 @@ from langchain_core.documents import Document
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
 
+# Carica il CSS
+st.markdown(styles.get_css(), unsafe_allow_html=True)
+
 # --- 2. FUNZIONI DI LOGICA ---
 
 def reset_conversation():
@@ -43,9 +46,13 @@ def get_pdf_text(uploaded_file):
     return text
 
 def build_rag_chain(vectorstore):
+    """Costruisce la catena RAG correggendo l'errore del context"""
     retriever = vectorstore.as_retriever()
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3, streaming=True)
     
+    # --- CORREZIONE QUI ---
+    # Definiamo esplicitamente {context} nel template, altrimenti LangChain si rompe.
+    # {system_instruction} verrà riempito dinamicamente a runtime.
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
         ("human", "{input}"),
@@ -55,6 +62,9 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_system_instruction(mode, style, num_questions):
+    """Genera solo la parte 'istruttiva' del prompt"""
+    
+    # Stile
     style_map = {
         "Sintetico": "Sii estremamente conciso. Usa elenchi puntati.",
         "Bilanciato": "Fornisci una risposta chiara e completa.",
@@ -62,43 +72,38 @@ def get_system_instruction(mode, style, num_questions):
     }
     style_text = style_map.get(style, "Rispondi normalmente.")
 
+    # Ruolo
     if mode == "💬 Chat / Spiegazione":
         role = f"Sei un tutor universitario esperto. {style_text}"
     elif mode == "❓ Simulazione Quiz":
-        role = (f"Sei un professore d'esame. Genera ORA {num_questions} domande difficili. "
+        role = (f"Sei un professore d'esame. Genera ORA {num_questions} domande difficili sull'argomento. "
                 "Numera le domande. NON dare le soluzioni.")
     elif mode == "🃏 Flashcards":
         role = f"Crea materiale di studio schematico. {style_text}. Formatta: **Termine** -> _Definizione_."
     else:
         role = "Sei un assistente utile."
 
+    # Nota: Non aggiungiamo più {context} qui perché è già nel template sopra
     return f"RUOLO: {role}"
 
 # --- 3. INTERFACCIA UTENTE ---
 
 def main():
-    # --- SIDEBAR ---
-    with st.sidebar:
-        # LOGO E TITOLO
-        st.image("https://cdn-icons-png.flaticon.com/512/4712/4712009.png", width=50)
-        st.markdown("### Configurazione")
-        
-        # --- PULSANTE TEMA (NUOVO!) ---
-        # Questo toggle controlla tutto il CSS
-        dark_mode = st.toggle("🌙 Modalità Notte", value=False)
-        
-        # Carica il CSS in base alla scelta dell'utente
-        st.markdown(styles.get_css(is_dark_mode=dark_mode), unsafe_allow_html=True)
-        
-        st.markdown("---")
+    # Header
+    st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Il tuo assistente universitario personale con Gemini 2.5 Pro</div>', unsafe_allow_html=True)
 
+    # Sidebar
+    with st.sidebar:
+        st.header("⚙️ Configurazione")
+        
         if "GOOGLE_API_KEY" in st.secrets:
             api_key = st.secrets["GOOGLE_API_KEY"]
-            st.success("✅ API Key Attiva")
+            st.success("✅ API Key Cloud Attiva")
         else:
             api_key = st.text_input("🔑 Google API Key", type="password")
             if not api_key:
-                st.warning("Inserisci la chiave")
+                st.warning("Inserisci la chiave per iniziare")
 
         st.markdown("---")
         
@@ -109,7 +114,7 @@ def main():
         )
         
         response_style = st.select_slider(
-            "📏 Lunghezza:",
+            "📏 Lunghezza Risposta:",
             options=["Sintetico", "Bilanciato", "Esaustivo"],
             value="Bilanciato",
             on_change=reset_conversation
@@ -120,23 +125,16 @@ def main():
             num_questions = st.slider("Domande:", 5, 20, 5, on_change=reset_conversation)
 
         st.markdown("---")
-        if st.button("🔄 Pulisci Chat", use_container_width=True):
+        if st.button("🔄 Nuova Chat", use_container_width=True):
             reset_conversation()
             st.rerun()
 
-    # --- MAIN AREA ---
-    
-    # Header
-    st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Il tuo assistente universitario con Gemini 2.5 Pro</div>', unsafe_allow_html=True)
-
-    # Verifica Key
+    # Main Content
     if not api_key:
-        st.info("👈 Configura la chiave API a sinistra.")
+        st.info("👈 Configura la chiave API nel menu a sinistra.")
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
         return
 
-    # Upload
     uploaded_file = st.file_uploader("📂 Trascina qui le dispense (PDF)", type="pdf")
 
     if not uploaded_file:
@@ -146,6 +144,7 @@ def main():
     else:
         os.environ["GOOGLE_API_KEY"] = api_key
 
+        # Indicizzazione
         if "vectorstore" not in st.session_state:
             with st.status("⚙️ Analisi Documento...", expanded=True) as status:
                 try:
@@ -154,6 +153,7 @@ def main():
                         st.error("PDF Vuoto.")
                         return
                     
+                    st.write("🧠 Indicizzazione Concetti...")
                     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
                     chunks = text_splitter.split_text(raw_text)
                     docs = [Document(page_content=t) for t in chunks]
@@ -162,7 +162,7 @@ def main():
                     vectorstore = FAISS.from_documents(docs, embeddings)
                     st.session_state.vectorstore = vectorstore
                     
-                    status.update(label="✅ Pronto!", state="complete", expanded=False)
+                    status.update(label="✅ Pronto! Inizia a studiare.", state="complete", expanded=False)
                     time.sleep(0.5)
                     st.rerun()
                 except Exception as e:
@@ -172,9 +172,11 @@ def main():
         # Setup Chain
         vectorstore = st.session_state.vectorstore
         rag_chain = build_rag_chain(vectorstore)
+        
+        # Recupero istruzione dinamica
         system_instr = get_system_instruction(study_mode, response_style, num_questions)
 
-        # Chat
+        # Chat UI
         chat_container = st.container()
 
         if "messages" not in st.session_state:
@@ -182,7 +184,6 @@ def main():
 
         with chat_container:
             for message in st.session_state.messages:
-                # Icona diversa in base al tema? No, usiamo emoji standard
                 avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
                 with st.chat_message(message["role"], avatar=avatar):
                     st.markdown(message["content"])
@@ -198,6 +199,7 @@ def main():
                 st.markdown(user_input)
 
             with chat_container.chat_message("assistant", avatar="🤖"):
+                # Passiamo l'istruzione specifica a runtime
                 response_stream = rag_chain.stream({
                     "input": user_input,
                     "system_instruction": system_instr

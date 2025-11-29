@@ -1,0 +1,1 @@
+--- FILE DI SISTEMA E PYTHON ---pycache/*.py[cod]*$py.class--- AMBIENTI VIRTUALI ---venv/env/.env--- FILE DI CONFIGURAZIONE STREAMLIT (SEGRETI) ---Importante: questo nasconde le tue chiavi API.streamlit/secrets.toml--- DATABASE LOCALE ---Non vogliamo caricare i dati degli utenti su GitHubstudy_master.db*.db*.sqlite3--- FILE DI SISTEMA OS ---.DS_StoreThumbs.db

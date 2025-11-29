@@ -1,14 +1,40 @@
 import streamlit as st
 import os
 import warnings
-import time
-import sqlite3
-import hashlib
 
-# Importiamo la grafica
-import styles 
+# --- 1. SETUP & CONFIGURAZIONE ---
+warnings.filterwarnings("ignore") # Silenzia avvisi tecnici
 
-# --- IMPORT LOGICA AI ---
+st.set_page_config(
+    page_title="AI Study Master Pro", 
+    page_icon="🎓", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- CSS PERSONALIZZATO PER UI MIGLIORE ---
+st.markdown("""
+<style>
+    /* Nasconde menu hamburger e footer standard */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Stile per il titolo */
+    .big-font {
+        font-size:30px !important;
+        font-weight: bold;
+        color: #4A90E2;
+    }
+    
+    /* Bordo colorato per la chat dell'assistente */
+    .stChatMessage {
+        border-radius: 10px;
+        padding: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- IMPORT LIBRERIE ---
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -18,322 +44,176 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.documents import Document
-from langchain_core.messages import SystemMessage, HumanMessage
 
-# --- 1. SETUP INIZIALE ---
-warnings.filterwarnings("ignore")
-st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
-st.markdown(styles.get_css(), unsafe_allow_html=True)
+# --- TITOLO PRINCIPALE ---
+col1, col2 = st.columns([1, 5])
+with col1:
+    # Icona generica educativa
+    st.markdown("## 🎓")
+with col2:
+    st.title("AI Study Master")
+    st.caption("Motore: **Gemini 2.5 Pro** | *Streaming Mode Active* ⚡")
 
-# --- 2. GESTIONE DATABASE E AUTH ---
+# --- SIDEBAR OTTIMIZZATA ---
+with st.sidebar:
+    st.header("⚙️ Configurazione")
+    
+    with st.expander("🔑 Gestione Chiave API", expanded=False):
+        # Inserisci qui la tua chiave se vuoi che sia precaricata, altrimenti lascia stringa vuota ""
+        default_key = "AIzaSyCHfBd6FtseBlXg75yG5Ln3grlvYK9XCHk" 
+        api_key = st.text_input("Google API Key", value=default_key, type="password")
 
-def init_db():
-    conn = sqlite3.connect('study_master.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS chat_history 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+    st.markdown("---")
+    st.subheader("🎯 Obiettivo Studio")
+    
+    study_mode = st.radio(
+        "Modalità:",
+        ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards & Schemi"],
+        captions=["Tutor personale", "Test pre-esame", "Memorizzazione rapida"]
+    )
+    
+    st.markdown("---")
+    
+    response_style = st.select_slider(
+        "Livello Dettaglio:",
+        options=["Sintetico", "Bilanciato", "Esaustivo"],
+        value="Bilanciato"
+    )
+    
+    num_questions = 5
+    if study_mode == "❓ Simulazione Quiz":
+        st.info("⚡ Opzioni Quiz")
+        num_questions = st.slider("N. Domande:", 5, 20, 5)
 
-def hash_password(password):
-    return hashlib.sha256(str.encode(password)).hexdigest()
+    st.markdown("---")
+    if st.button("🗑️ Cancella Chat", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
 
-def register_user(username, password):
-    conn = sqlite3.connect('study_master.db')
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hash_password(password)))
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-    finally:
-        conn.close()
+# --- FUNZIONI CORE ---
 
-def login_user(username, password):
-    conn = sqlite3.connect('study_master.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, hash_password(password)))
-    return c.fetchone() is not None
-
-def save_message_to_db(username, role, content):
-    conn = sqlite3.connect('study_master.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", (username, role, content))
-    conn.commit()
-    conn.close()
-
-def load_chat_history(username):
-    conn = sqlite3.connect('study_master.db')
-    c = conn.cursor()
-    c.execute("SELECT role, content FROM chat_history WHERE username = ? ORDER BY timestamp ASC", (username,))
-    rows = c.fetchall()
-    conn.close()
-    return [{"role": row[0], "content": row[1]} for row in rows]
-
-def clear_user_history(username):
-    conn = sqlite3.connect('study_master.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM chat_history WHERE username = ?", (username,))
-    conn.commit()
-    conn.close()
-
-# --- 3. LOGICA AI ---
-
+# MODIFICA QUI: show_spinner=False nasconde la scritta "Running get_local_embeddings..."
 @st.cache_resource(show_spinner=False)
 def get_local_embeddings():
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-def get_pdf_text(uploaded_file):
+def get_pdf_text(pdf_docs):
     text = ""
     try:
-        pdf_reader = PdfReader(uploaded_file)
+        pdf_reader = PdfReader(pdf_docs)
         for page in pdf_reader.pages:
             t = page.extract_text()
             if t: text += t
     except Exception as e:
         st.error(f"Errore lettura PDF: {e}")
-        return None
     return text
 
-def build_rag_chain(vectorstore):
-    retriever = vectorstore.as_retriever()
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
-    
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
-        ("human", "{input}"),
-    ])
-    
-    qa_chain = create_stuff_documents_chain(llm, prompt_template)
-    return create_retrieval_chain(retriever, qa_chain)
+# --- GENERATORE DI STREAMING ---
+def stream_response(chain, input_text):
+    for chunk in chain.stream({"input": input_text}):
+        if 'answer' in chunk:
+            yield chunk['answer']
 
-def get_general_response(user_input, system_instruction):
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.4)
-    messages = [
-        SystemMessage(content=system_instruction),
-        HumanMessage(content=user_input)
-    ]
-    response = llm.invoke(messages)
-    return response.content
-
-def get_system_instruction(mode, style, num_questions):
-    style_map = {
-        "Sintetico": "Sii estremamente conciso. Usa elenchi puntati.",
-        "Bilanciato": "Fornisci una risposta chiara e completa.",
-        "Esaustivo": "Spiega ogni dettaglio, includi contesto ed esempi."
-    }
-    style_text = style_map.get(style, "Rispondi normalmente.")
-
-    if mode == "💬 Chat / Spiegazione":
-        role = f"Sei un tutor universitario esperto. Se non hai documenti, rispondi usando la tua conoscenza generale. {style_text}"
-    elif mode == "❓ Simulazione Quiz":
-        role = (f"Sei un professore d'esame. Genera ORA {num_questions} domande difficili sull'argomento. "
-                "Numera le domande. NON dare le soluzioni.")
-    elif mode == "🃏 Flashcards":
-        role = f"Crea materiale di studio schematico. {style_text}. Formatta: **Termine** -> _Definizione_."
-    else:
-        role = "Sei un assistente utile."
-
-    return f"RUOLO: {role}"
-
-# --- HELPER PER BLOCCARE LA UI ---
-def lock_ui():
-    st.session_state.processing = True
-
-# --- 4. INTERFACCIA MAIN ---
-
+# --- MAIN ---
 def main():
-    init_db()
-    
-    # Inizializza stato di processing se non esiste
-    if "processing" not in st.session_state:
-        st.session_state.processing = False
-    
-    st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("📂 Carica le tue dispense (PDF)", type="pdf")
 
-    # --- LOGIN ---
-    if "user_id" not in st.session_state:
-        st.session_state.user_id = None
+    if uploaded_file and api_key:
+        os.environ["GOOGLE_API_KEY"] = api_key
 
-    if st.session_state.user_id is None:
-        tab1, tab2 = st.tabs(["🔑 Accedi", "📝 Registrati"])
-        
-        with tab1:
-            st.markdown('<div class="sub-title">Bentornato! Accedi per i tuoi appunti.</div>', unsafe_allow_html=True)
-            with st.form("login_form"):
-                username = st.text_input("Username")
-                password = st.text_input("Password", type="password")
-                if st.form_submit_button("Accedi"):
-                    if login_user(username, password):
-                        st.session_state.user_id = username
-                        st.success(f"Benvenuto {username}!")
-                        st.rerun()
-                    else:
-                        st.error("Username o Password non validi.")
-
-        with tab2:
-            st.markdown('<div class="sub-title">Crea il tuo profilo studente.</div>', unsafe_allow_html=True)
-            with st.form("register_form"):
-                new_user = st.text_input("Nuovo Username")
-                new_pass = st.text_input("Nuova Password", type="password")
-                if st.form_submit_button("Registrati"):
-                    if register_user(new_user, new_pass):
-                        st.success("Account creato! Ora puoi accedere.")
-                    else:
-                        st.error("Username già esistente.")
-        
-        st.markdown("---")
-        st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
-        return
-
-    # --- APP DOPO LOGIN ---
-    
-    # Variabile per disabilitare i controlli
-    is_locked = st.session_state.processing
-
-    with st.sidebar:
-        st.write(f"👤 Utente: **{st.session_state.user_id}**")
-        if st.button("Logout", disabled=is_locked):
-            st.session_state.user_id = None
-            st.session_state.messages = []
-            if "vectorstore" in st.session_state: del st.session_state.vectorstore
-            st.rerun()
-        
-        st.markdown("---")
-        st.header("⚙️ Configurazione")
-        
-        if "GOOGLE_API_KEY" in st.secrets:
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            st.success("✅ API Key Cloud Attiva")
-        else:
-            api_key = st.text_input("🔑 Google API Key", type="password", disabled=is_locked)
-
-        if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
-        if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
-        if "num_questions" not in st.session_state: st.session_state.num_questions = 5
-
-        # --- SEZIONE IMPOSTAZIONI (DISABILITATA SE IN ELABORAZIONE) ---
-        st.subheader("Studio")
-        
-        st.session_state.study_mode = st.radio(
-            "🧠 Modalità Studio:",
-            ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
-            index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode),
-            disabled=is_locked
-        )
-        
-        st.session_state.response_style = st.select_slider(
-            "📏 Lunghezza:", 
-            options=["Sintetico", "Bilanciato", "Esaustivo"], 
-            value=st.session_state.response_style,
-            disabled=is_locked
-        )
-        
-        st.session_state.num_questions = st.slider(
-            "Domande Quiz:", 
-            5, 20, 
-            st.session_state.num_questions,
-            disabled=is_locked
-        )
-        
-        if st.button("🗑️ Cancella Storia Utente", disabled=is_locked):
-            clear_user_history(st.session_state.user_id)
-            st.session_state.messages = []
-            st.rerun()
-
-    if not api_key:
-        st.info("👈 Configura la chiave API.")
-        return
-    
-    os.environ["GOOGLE_API_KEY"] = api_key
-
-    # --- LOGICA IBRIDA ---
-    pdf_mode = False
-    
-    if "vectorstore" in st.session_state and st.session_state.vectorstore is not None:
-        pdf_mode = True
-        with st.container():
-            col1, col2 = st.columns([3, 1])
-            col1.success(f"📂 **{st.session_state.get('current_filename', 'Doc')}** attivo.")
-            if col2.button("❌ Chiudi File", disabled=is_locked):
-                del st.session_state.vectorstore
-                if "current_filename" in st.session_state: del st.session_state.current_filename
-                st.rerun()
-    else:
-        with st.expander("📂 Carica PDF (Opzionale)", expanded=False):
-            uploaded_file = st.file_uploader("Trascina qui le dispense", type="pdf", disabled=is_locked)
-            if uploaded_file and not is_locked:
-                with st.status("⚙️ Analisi Documento...") as status:
-                    try:
-                        raw_text = get_pdf_text(uploaded_file)
-                        if raw_text:
-                            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-                            chunks = text_splitter.split_text(raw_text)
-                            docs = [Document(page_content=t) for t in chunks]
-                            embeddings = get_local_embeddings()
-                            st.session_state.vectorstore = FAISS.from_documents(docs, embeddings)
-                            st.session_state.current_filename = uploaded_file.name
-                            status.update(label="✅ Pronto!", state="complete")
-                            time.sleep(1)
-                            st.rerun()
-                        else: st.error("PDF Vuoto")
-                    except Exception as e: st.error(f"Errore: {e}")
-
-    # --- CHAT UI ---
-    
-    system_instr = get_system_instruction(st.session_state.study_mode, st.session_state.response_style, st.session_state.num_questions)
-    db_history = load_chat_history(st.session_state.user_id)
-    st.session_state.messages = db_history
-
-    chat_container = st.container()
-    with chat_container:
-        if not st.session_state.messages:
-            if pdf_mode:
-                st.info("👋 Ciao! Sono pronto a rispondere alle domande sul **PDF caricato**.")
-            else:
-                st.info("👋 Ciao! Sono il tuo Tutor Generale. Chiedimi qualsiasi cosa o carica un PDF dal menu.")
-
-        for message in st.session_state.messages:
-            avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
-            with st.chat_message(message["role"], avatar=avatar):
-                st.markdown(message["content"])
-
-    # Input Bar con Callback di Blocco
-    placeholder = "Fai una domanda sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
-    
-    # 'on_submit=lock_ui' viene chiamato PRIMA del rerun, bloccando l'interfaccia al prossimo render
-    if user_input := st.chat_input(placeholder, on_submit=lock_ui, disabled=is_locked):
-        save_message_to_db(st.session_state.user_id, "user", user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with chat_container.chat_message("user", avatar="🧑‍🎓"):
-            st.markdown(user_input)
-
-        with chat_container.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Sto pensando..."):
+        if "vectorstore" not in st.session_state:
+            # Status Box elegante
+            with st.status("🚀 Indicizzazione documenti in corso...", expanded=True) as status:
                 try:
-                    if pdf_mode:
-                        rag_chain = build_rag_chain(st.session_state.vectorstore)
-                        response = rag_chain.invoke({
-                            "input": user_input,
-                            "system_instruction": system_instr
-                        })
-                        answer = response['answer']
-                    else:
-                        answer = get_general_response(user_input, system_instr)
+                    # 1. Lettura
+                    # st.write("📖 Lettura PDF...") # Decommenta se vuoi vedere i passaggi
+                    raw_text = get_pdf_text(uploaded_file)
+                    if not raw_text:
+                        st.error("PDF Vuoto.")
+                        return
+
+                    # 2. Chunking
+                    # st.write("✂️ Suddivisione concetti...")
+                    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                    chunks = text_splitter.split_text(raw_text)
+                    docs = [Document(page_content=t) for t in chunks]
+
+                    # 3. Embeddings (Senza scritta fastidiosa ora)
+                    # st.write("🧠 Creazione memoria locale...")
+                    embeddings = get_local_embeddings()
+                    vectorstore = FAISS.from_documents(docs, embeddings)
                     
-                    st.markdown(answer)
-                    save_message_to_db(st.session_state.user_id, "assistant", answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.session_state.vectorstore = vectorstore
+                    status.update(label="✅ Documenti pronti! Puoi chattare.", state="complete", expanded=False)
                 
                 except Exception as e:
-                    st.error(f"Errore API: {e}")
-                
-                finally:
-                    # SBLOCCA UI AL TERMINE
-                    st.session_state.processing = False
-                    st.rerun()
+                    st.error(f"Errore critico: {e}")
+                    return
+        
+        vectorstore = st.session_state.vectorstore
+        retriever = vectorstore.as_retriever()
+
+        # 4. LLM
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3, streaming=True)
+        
+        # 5. Prompt Logic
+        if response_style == "Sintetico":
+            style_instr = "Sii telegrafico. Usa elenchi puntati. Massimo rendimento, minimo testo."
+        elif response_style == "Esaustivo":
+            style_instr = "Spiega tutto nei minimi dettagli. Includi contesto, esempi e definizioni complete."
+        else:
+            style_instr = "Risposta chiara ed equilibrata."
+
+        if study_mode == "💬 Chat / Spiegazione":
+            role_instr = f"Sei un tutor eccellente. {style_instr}"
+        elif study_mode == "❓ Simulazione Quiz":
+            role_instr = (f"Sei un professore d'esame. Genera SUBITO {num_questions} domande difficili. "
+                          "NON dare soluzioni. Aspetta la risposta studente.")
+        elif study_mode == "🃏 Flashcards & Schemi":
+            role_instr = f"Crea schemi di studio. {style_instr}. Formatta: CONCETTO -> DEFINIZIONE."
+
+        system_prompt = (
+            f"RUOLO: {role_instr}\n"
+            "FONTE: Rispondi SOLO basandoti sul contesto fornito.\n"
+            "CONTESTO:\n{context}"
+        )
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}"),
+        ])
+
+        qa_chain = create_stuff_documents_chain(llm, prompt)
+        rag_chain = create_retrieval_chain(retriever, qa_chain)
+
+        # --- INTERFACCIA CHAT ---
+        message_container = st.container()
+
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        with message_container:
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+        placeholder = "Chiedi qualcosa..."
+        if study_mode == "❓ Simulazione Quiz":
+            placeholder = f"Scrivi 'VIA' per generare {num_questions} domande..."
+
+        if user_input := st.chat_input(placeholder):
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with message_container.chat_message("user"):
+                st.markdown(user_input)
+
+            with message_container.chat_message("assistant"):
+                response_stream = stream_response(rag_chain, user_input)
+                full_response = st.write_stream(response_stream)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+    elif not uploaded_file:
+        st.info("👈 Carica un PDF nella barra laterale per attivare il Tutor.")
 
 if __name__ == '__main__':
     main()

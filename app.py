@@ -6,9 +6,6 @@ import sqlite3
 import hashlib
 from datetime import datetime
 
-# Importiamo la grafica
-import styles 
-
 # --- IMPORT LOGICA AI ---
 try:
     from pypdf import PdfReader
@@ -25,6 +22,13 @@ except ImportError as e:
     st.error(f"⚠️ Errore critico librerie: {e}. Controlla requirements.txt.")
     st.stop()
 
+# --- IMPORT GRAFICA (Gestione Errore) ---
+try:
+    import styles
+    HAS_STYLES = True
+except ImportError:
+    HAS_STYLES = False
+
 # --- SETUP FIREBASE (OPZIONALE) ---
 try:
     from google.oauth2 import service_account
@@ -36,7 +40,9 @@ except ImportError:
 # --- 1. SETUP INIZIALE ---
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
-st.markdown(styles.get_css(), unsafe_allow_html=True)
+
+if HAS_STYLES:
+    st.markdown(styles.get_css(), unsafe_allow_html=True)
 
 # --- 2. GESTIONE DATABASE IBRIDO (SQLITE + FIRESTORE) ---
 
@@ -166,10 +172,9 @@ def clear_user_history(username):
 
 # --- 3. LOGICA AI ---
 
-# --- 3. LOGICA AI CORRETTA ---
-
 @st.cache_resource(show_spinner=False)
 def get_local_embeddings():
+    # Usa un modello di embedding leggero per CPU
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 def get_pdf_text(uploaded_file):
@@ -186,8 +191,11 @@ def get_pdf_text(uploaded_file):
 
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
-    # CORREZIONE 1: Assegnazione variabile e nome modello valido
-    llm = ChatGoogleGenerativeAI(model="gemini-3-Pro", temperature=0.3)
+    
+    # --- CONFIGURAZIONE GEMINI 3 PRO ---
+    # Nota: Le API di Google richiedono nomi modello minuscoli. 
+    # Se "gemini-3-pro" da errore, prova "gemini-1.5-pro" o controlla il nome esatto della release.
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -198,8 +206,9 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_general_response(user_input, system_instruction):
-    # CORREZIONE 2: Nome modello esplicito invece di variabile non definita
-    llm = ChatGoogleGenerativeAI(model="gemini-3-Pro", temperature=0.3)
+    # --- CONFIGURAZIONE GEMINI 3 PRO ---
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.4)
+    
     messages = [
         SystemMessage(content=system_instruction),
         HumanMessage(content=user_input)
@@ -229,7 +238,7 @@ def get_system_instruction(mode, style, num_questions):
 
 # --- HELPER PER BLOCCARE LA UI ---
 def lock_ui():
-    """Funzione callback chiamata quando l'utente preme invio. Blocca la UI al prossimo render."""
+    """Funzione callback chiamata quando l'utente preme invio."""
     st.session_state.processing = True
 
 # --- 4. INTERFACCIA MAIN ---
@@ -281,7 +290,8 @@ def main():
                     else:
                         st.error("Username già esistente.")
         
-        st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
+        if HAS_STYLES:
+            st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
         return
 
     # --- APP DOPO LOGIN ---
@@ -315,8 +325,6 @@ def main():
         # --- SEZIONE IMPOSTAZIONI ---
         st.subheader("Studio")
         
-        # I widget sono disabilitati se 'is_locked' è True.
-        # Rimuovendo il Form, le modifiche sono immediate (alla prossima iterazione non bloccata)
         st.session_state.study_mode = st.radio(
             "🧠 Modalità Studio:",
             ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
@@ -404,7 +412,6 @@ def main():
     placeholder = "Fai una domanda sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
     
     # INPUT BAR con callback di blocco
-    # on_submit=lock_ui imposta 'processing' a True prima che lo script riparta
     if user_input := st.chat_input(placeholder, on_submit=lock_ui, disabled=is_locked):
         
         # 1. Salva subito il messaggio utente
@@ -415,7 +422,7 @@ def main():
 
         # 2. Genera risposta AI
         with chat_container.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Sto pensando..."):
+            with st.spinner("Sto pensando... (Gemini 3 Pro)"):
                 try:
                     if pdf_mode:
                         rag_chain = build_rag_chain(st.session_state.vectorstore)
@@ -433,6 +440,7 @@ def main():
                 
                 except Exception as e:
                     st.error(f"Errore API: {e}")
+                    st.warning("Suggerimento: Se l'errore è 400/404, controlla il nome esatto del modello in `app.py`. Alcune versioni preview usano nomi come 'gemini-experimental' o 'gemini-1.5-pro'.")
                 
                 finally:
                     # Al termine (successo o errore), sblocca e ricarica
@@ -441,7 +449,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-

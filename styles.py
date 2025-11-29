@@ -10,10 +10,13 @@ def get_css():
             font-family: 'Poppins', sans-serif;
         }
 
-        /* NASCONDI ELEMENTI STANDARD */
-        #MainMenu {visibility: hidden;}
+        /* RIMOSSO IL BLOCCO CHE NASCONDEVA L'HEADER E IL MENU */
         footer {visibility: hidden;}
-        header {visibility: hidden;}
+        
+        /* Se vuoi nascondere solo la linea decorativa colorata in alto ma tenere il menu, usa questo: */
+        header[data-testid="stHeader"] {
+            background: transparent;
+        }
 
         /* --- TITOLO PRINCIPALE (Adattivo) --- */
         .main-title {
@@ -27,16 +30,16 @@ def get_css():
         
         .sub-title {
             font-size: 1.2rem;
-            color: var(--text-color); /* Si adatta al tema */
+            color: var(--text-color);
             opacity: 0.8;
             margin-bottom: 2rem;
         }
 
         /* --- CARD DELLA LANDING PAGE (Adattive) --- */
         .feature-card {
-            background-color: var(--secondary-background-color); /* Grigio chiaro in Light, Grigio scuro in Dark */
+            background-color: var(--secondary-background-color);
             border: 1px solid var(--text-color); 
-            border-color: rgba(128, 128, 128, 0.2); /* Bordo sottile semi-trasparente */
+            border-color: rgba(128, 128, 128, 0.2);
             border-radius: 15px;
             padding: 25px;
             text-align: center;
@@ -63,9 +66,6 @@ def get_css():
         }
 
         /* --- STILE CHAT --- */
-        /* Non forziamo colori di sfondo fissi per la chat, 
-           lasciamo che Streamlit gestisca il tema, ma miglioriamo i bordi */
-        
         .stChatMessage {
             border-radius: 15px;
             border: 1px solid rgba(128, 128, 128, 0.1);

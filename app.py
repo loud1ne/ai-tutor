@@ -3,7 +3,7 @@ import os
 import warnings
 
 # --- 1. SETUP & CONFIGURAZIONE ---
-warnings.filterwarnings("ignore") # Silenzia avvisi tecnici
+warnings.filterwarnings("ignore")
 
 st.set_page_config(
     page_title="AI Study Master Pro", 
@@ -54,15 +54,18 @@ with col2:
     st.title("AI Study Master")
     st.caption("Motore: **Gemini 2.5 Pro** | *Streaming Mode Active* ⚡")
 
-# --- SIDEBAR OTTIMIZZATA ---
 with st.sidebar:
     st.header("⚙️ Configurazione")
     
-    with st.expander("🔑 Gestione Chiave API", expanded=False):
-        default_key = "" 
-        api_key = st.text_input("Google API Key", value=default_key, type="password")
 
-    st.markdown("---")
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success("✅ Chiave API caricata dal Cloud sicura.")
+    else:
+        api_key = st.text_input("Inserisci Google API Key", type="password")
+        if not api_key:
+            st.warning("⚠️ Inserisci la chiave per iniziare")
+
     st.subheader("🎯 Obiettivo Studio")
     
     study_mode = st.radio(

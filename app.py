@@ -422,7 +422,7 @@ def main():
 
         # 2. Genera risposta AI
         with chat_container.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Sto pensando... (Gemini 2.5 Flash)"):
+            with st.spinner("Sto pensando..."):
                 try:
                     if pdf_mode:
                         rag_chain = build_rag_chain(st.session_state.vectorstore)
@@ -449,3 +449,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

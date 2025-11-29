@@ -3,7 +3,7 @@ import os
 import warnings
 import time
 
-# Importiamo la grafica dal file styles.py
+# Importiamo la grafica
 import styles 
 
 # --- IMPORT LOGICA AI ---
@@ -21,22 +21,19 @@ from langchain_core.documents import Document
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
 
-# Carica il CSS dal file esterno
+# Carica il CSS
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
-# --- 2. FUNZIONI DI LOGICA (IL CERVELLO) ---
+# --- 2. FUNZIONI DI LOGICA ---
 
 def reset_conversation():
-    """Resetta la chat quando si cambia modalità"""
     st.session_state.messages = []
 
 @st.cache_resource(show_spinner=False)
 def get_local_embeddings():
-    """Carica il modello per vettorizzare il testo (CPU Locale)"""
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 def get_pdf_text(uploaded_file):
-    """Estrae il testo dal PDF"""
     text = ""
     try:
         pdf_reader = PdfReader(uploaded_file)
@@ -48,14 +45,16 @@ def get_pdf_text(uploaded_file):
         return None
     return text
 
-def build_rag_chain(vectorstore, model_name="gemini-2.5-pro"):
-    """Costruisce la catena di intelligenza artificiale"""
+def build_rag_chain(vectorstore):
+    """Costruisce la catena RAG correggendo l'errore del context"""
     retriever = vectorstore.as_retriever()
-    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.3, streaming=True)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3, streaming=True)
     
-    # Il prompt viene iniettato dinamicamente nel main, qui prepariamo la struttura
+    # --- CORREZIONE QUI ---
+    # Definiamo esplicitamente {context} nel template, altrimenti LangChain si rompe.
+    # {system_instruction} verrà riempito dinamicamente a runtime.
     prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "{system_instruction}"),
+        ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
         ("human", "{input}"),
     ])
     
@@ -63,17 +62,17 @@ def build_rag_chain(vectorstore, model_name="gemini-2.5-pro"):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_system_instruction(mode, style, num_questions):
-    """Crea il prompt perfetto in base alle impostazioni"""
+    """Genera solo la parte 'istruttiva' del prompt"""
     
-    # Definizione Stile
+    # Stile
     style_map = {
-        "Sintetico": "Sii estremamente conciso. Usa elenchi puntati. Risposte brevi.",
-        "Bilanciato": "Fornisci una risposta chiara, completa ma non verbosa.",
-        "Esaustivo": "Spiega ogni dettaglio, includi contesto, esempi e definizioni approfondite."
+        "Sintetico": "Sii estremamente conciso. Usa elenchi puntati.",
+        "Bilanciato": "Fornisci una risposta chiara e completa.",
+        "Esaustivo": "Spiega ogni dettaglio, includi contesto ed esempi."
     }
     style_text = style_map.get(style, "Rispondi normalmente.")
 
-    # Definizione Ruolo
+    # Ruolo
     if mode == "💬 Chat / Spiegazione":
         role = f"Sei un tutor universitario esperto. {style_text}"
     elif mode == "❓ Simulazione Quiz":
@@ -84,24 +83,20 @@ def get_system_instruction(mode, style, num_questions):
     else:
         role = "Sei un assistente utile."
 
-    return (
-        f"RUOLO: {role}\n"
-        "RISPONDI SOLO BASANDOTI SUL CONTESTO SEGUENTE:\n"
-        "{context}"
-    )
+    # Nota: Non aggiungiamo più {context} qui perché è già nel template sopra
+    return f"RUOLO: {role}"
 
-# --- 3. INTERFACCIA UTENTE (IL CORPO) ---
+# --- 3. INTERFACCIA UTENTE ---
 
 def main():
-    # --- HEADER ---
+    # Header
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Il tuo assistente universitario personale con Gemini 2.5 Pro</div>', unsafe_allow_html=True)
 
-    # --- SIDEBAR ---
+    # Sidebar
     with st.sidebar:
         st.header("⚙️ Configurazione")
         
-        # Gestione API Key (Sicura)
         if "GOOGLE_API_KEY" in st.secrets:
             api_key = st.secrets["GOOGLE_API_KEY"]
             st.success("✅ API Key Cloud Attiva")
@@ -112,14 +107,12 @@ def main():
 
         st.markdown("---")
         
-        # Menu Modalità
         study_mode = st.radio(
             "🧠 Modalità Studio:",
             ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
             on_change=reset_conversation
         )
         
-        # Menu Stile
         response_style = st.select_slider(
             "📏 Lunghezza Risposta:",
             options=["Sintetico", "Bilanciato", "Esaustivo"],
@@ -127,7 +120,6 @@ def main():
             on_change=reset_conversation
         )
         
-        # Menu Quiz (Condizionale)
         num_questions = 5
         if study_mode == "❓ Simulazione Quiz":
             num_questions = st.slider("Domande:", 5, 20, 5, on_change=reset_conversation)
@@ -137,28 +129,22 @@ def main():
             reset_conversation()
             st.rerun()
 
-    # --- MAIN CONTENT AREA ---
-    
-    # Se manca la chiave, stop.
+    # Main Content
     if not api_key:
         st.info("👈 Configura la chiave API nel menu a sinistra.")
-        # Mostra la landing page anche se manca la chiave, per bellezza
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
         return
 
-    # Upload File
     uploaded_file = st.file_uploader("📂 Trascina qui le dispense (PDF)", type="pdf")
 
-    # SCENARIO A: NESSUN FILE -> MOSTRA LANDING PAGE
     if not uploaded_file:
         st.markdown("---")
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
 
-    # SCENARIO B: FILE CARICATO -> MOSTRA CHAT
     else:
         os.environ["GOOGLE_API_KEY"] = api_key
 
-        # Indicizzazione (Eseguita una volta sola)
+        # Indicizzazione
         if "vectorstore" not in st.session_state:
             with st.status("⚙️ Analisi Documento...", expanded=True) as status:
                 try:
@@ -183,46 +169,42 @@ def main():
                     st.error(f"Errore critico: {e}")
                     return
 
-        # Recupero risorse
+        # Setup Chain
         vectorstore = st.session_state.vectorstore
         rag_chain = build_rag_chain(vectorstore)
         
-        # Preparazione Prompt Dinamico
+        # Recupero istruzione dinamica
         system_instr = get_system_instruction(study_mode, response_style, num_questions)
 
-        # --- CHAT UI ---
+        # Chat UI
         chat_container = st.container()
 
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
-        # Renderizza messaggi passati
         with chat_container:
             for message in st.session_state.messages:
                 avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
                 with st.chat_message(message["role"], avatar=avatar):
                     st.markdown(message["content"])
 
-        # Input Box
+        # Input
         placeholder = "Fai una domanda..."
         if study_mode == "❓ Simulazione Quiz":
             placeholder = f"Scrivi 'VIA' per generare {num_questions} domande..."
 
         if user_input := st.chat_input(placeholder):
-            # 1. Mostra input utente
             st.session_state.messages.append({"role": "user", "content": user_input})
             with chat_container.chat_message("user", avatar="🧑‍🎓"):
                 st.markdown(user_input)
 
-            # 2. Genera risposta (Streaming)
             with chat_container.chat_message("assistant", avatar="🤖"):
-                # Passiamo l'istruzione di sistema specifica per questa chiamata
+                # Passiamo l'istruzione specifica a runtime
                 response_stream = rag_chain.stream({
                     "input": user_input,
                     "system_instruction": system_instr
                 })
                 
-                # Funzione generatore per estrarre solo il testo della risposta
                 def stream_text():
                     for chunk in response_stream:
                         if 'answer' in chunk:
@@ -230,7 +212,6 @@ def main():
                 
                 full_response = st.write_stream(stream_text)
             
-            # 3. Salva storia
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 if __name__ == '__main__':

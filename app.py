@@ -38,10 +38,6 @@ warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
-# Definiamo il modello richiesto
-# Nota: Assicurati di avere accesso a questo modello specifico nella tua API Key
-MODEL_NAME = "gemini-3-pro"
-
 # --- 2. GESTIONE DATABASE IBRIDO (SQLITE + FIRESTORE) ---
 
 def get_db_mode():
@@ -189,7 +185,7 @@ def get_pdf_text(uploaded_file):
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
     # Usa il modello richiesto
-    llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0.3)
+    ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -443,4 +439,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 

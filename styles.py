@@ -10,15 +10,15 @@ def get_css():
             font-family: 'Poppins', sans-serif;
         }
 
-        /* RIMOSSO IL BLOCCO CHE NASCONDEVA L'HEADER E IL MENU */
+        /* NASCONDI SOLO IL FOOTER, NON L'HEADER (così il menu funziona) */
         footer {visibility: hidden;}
         
-        /* Se vuoi nascondere solo la linea decorativa colorata in alto ma tenere il menu, usa questo: */
+        /* Se vuoi nascondere la barra colorata in alto ma tenere il menu: */
         header[data-testid="stHeader"] {
             background: transparent;
         }
 
-        /* --- TITOLO PRINCIPALE (Adattivo) --- */
+        /* --- TITOLO PRINCIPALE --- */
         .main-title {
             font-size: 3rem;
             font-weight: 700;
@@ -35,11 +35,10 @@ def get_css():
             margin-bottom: 2rem;
         }
 
-        /* --- CARD DELLA LANDING PAGE (Adattive) --- */
+        /* --- CARD --- */
         .feature-card {
             background-color: var(--secondary-background-color);
-            border: 1px solid var(--text-color); 
-            border-color: rgba(128, 128, 128, 0.2);
+            border: 1px solid rgba(128, 128, 128, 0.2);
             border-radius: 15px;
             padding: 25px;
             text-align: center;
@@ -65,13 +64,12 @@ def get_css():
             opacity: 0.8;
         }
 
-        /* --- STILE CHAT --- */
+        /* --- CHAT --- */
         .stChatMessage {
             border-radius: 15px;
             border: 1px solid rgba(128, 128, 128, 0.1);
         }
 
-        /* Avatar */
         .stChatMessage .stImage {
             border-radius: 50%;
             border: 2px solid #4A90E2;

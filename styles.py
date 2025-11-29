@@ -12,7 +12,9 @@ def get_css():
 
         /* HEADER E FOOTER PULITI */
         footer {visibility: hidden;}
-        header[data-testid="stHeader"] {background: transparent;}
+        header[data-testid="stHeader"] {
+            background: transparent;
+        }
 
         /* --- TITOLO PRINCIPALE --- */
         .main-title {
@@ -22,6 +24,7 @@ def get_css():
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 0.5rem;
+            text-align: center;
         }
         
         .sub-title {
@@ -29,9 +32,10 @@ def get_css():
             color: var(--text-color);
             opacity: 0.8;
             margin-bottom: 2rem;
+            text-align: center;
         }
 
-        /* --- CONTAINER LOGIN --- */
+        /* --- LOGIN & FORMS --- */
         div[data-testid="stForm"] {
             border: 1px solid rgba(128, 128, 128, 0.2);
             border-radius: 15px;
@@ -39,7 +43,7 @@ def get_css():
             background-color: var(--secondary-background-color);
         }
 
-        /* --- CARD --- */
+        /* --- CARDS DELLA HOME --- */
         .feature-card {
             background-color: var(--secondary-background-color);
             border: 1px solid rgba(128, 128, 128, 0.2);
@@ -53,6 +57,7 @@ def get_css():
         .feature-card:hover {
             transform: translateY(-5px);
             border-color: #4A90E2;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
 
         .feature-card h3 {
@@ -61,26 +66,36 @@ def get_css():
             margin-bottom: 10px;
         }
 
-        /* --- CHAT STYLES --- */
+        /* --- MESSAGGI CHAT --- */
+        /* Migliora la leggibilità e rimuove trasparenze strane */
         .stChatMessage {
+            background-color: transparent;
             border-radius: 15px;
             border: 1px solid rgba(128, 128, 128, 0.1);
+            margin-bottom: 10px;
         }
+        
         .stChatMessage .stImage {
             border-radius: 50%;
             border: 2px solid #4A90E2;
         }
         
-        /* Evita trasparenze strane sui messaggi */
-        .stChatMessage {
-            background-color: rgba(255, 255, 255, 0.05);
+        /* Utente */
+        div[data-testid="chatAvatarIcon-user"] {
+            background-color: #4A90E2;
         }
+        
+        /* Bot */
+        div[data-testid="chatAvatarIcon-assistant"] {
+            background-color: #9013FE;
+        }
+
     </style>
     """
 
 def get_landing_page_html():
     return """
-    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 2rem;">
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
                 <h3>🗣️ Tutor Universale</h3>

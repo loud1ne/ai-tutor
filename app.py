@@ -46,13 +46,9 @@ def get_pdf_text(uploaded_file):
     return text
 
 def build_rag_chain(vectorstore):
-    """Costruisce la catena RAG correggendo l'errore del context"""
     retriever = vectorstore.as_retriever()
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3, streaming=True)
     
-    # --- CORREZIONE QUI ---
-    # Definiamo esplicitamente {context} nel template, altrimenti LangChain si rompe.
-    # {system_instruction} verrà riempito dinamicamente a runtime.
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
         ("human", "{input}"),
@@ -62,9 +58,6 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_system_instruction(mode, style, num_questions):
-    """Genera solo la parte 'istruttiva' del prompt"""
-    
-    # Stile
     style_map = {
         "Sintetico": "Sii estremamente conciso. Usa elenchi puntati.",
         "Bilanciato": "Fornisci una risposta chiara e completa.",
@@ -72,7 +65,6 @@ def get_system_instruction(mode, style, num_questions):
     }
     style_text = style_map.get(style, "Rispondi normalmente.")
 
-    # Ruolo
     if mode == "💬 Chat / Spiegazione":
         role = f"Sei un tutor universitario esperto. {style_text}"
     elif mode == "❓ Simulazione Quiz":
@@ -83,7 +75,6 @@ def get_system_instruction(mode, style, num_questions):
     else:
         role = "Sei un assistente utile."
 
-    # Nota: Non aggiungiamo più {context} qui perché è già nel template sopra
     return f"RUOLO: {role}"
 
 # --- 3. INTERFACCIA UTENTE ---
@@ -92,6 +83,11 @@ def main():
     # Header
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Il tuo assistente universitario personale con Gemini 2.5 Pro</div>', unsafe_allow_html=True)
+
+    # Inizializza variabili di stato per i controlli se non esistono
+    if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
+    if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
+    if "num_questions" not in st.session_state: st.session_state.num_questions = 5
 
     # Sidebar
     with st.sidebar:
@@ -107,25 +103,39 @@ def main():
 
         st.markdown("---")
         
-        study_mode = st.radio(
-            "🧠 Modalità Studio:",
-            ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
-            on_change=reset_conversation
-        )
-        
-        response_style = st.select_slider(
-            "📏 Lunghezza Risposta:",
-            options=["Sintetico", "Bilanciato", "Esaustivo"],
-            value="Bilanciato",
-            on_change=reset_conversation
-        )
-        
-        num_questions = 5
-        if study_mode == "❓ Simulazione Quiz":
-            num_questions = st.slider("Domande:", 5, 20, 5, on_change=reset_conversation)
+        # --- MODIFICA: USO DI FORM PER EVITARE RELOAD IMMEDIATI ---
+        with st.form(key="settings_form"):
+            st.subheader("Impostazioni Studio")
+            
+            # Nota: Ho rimosso 'on_change=reset_conversation' per evitare cancellazioni involontarie
+            new_study_mode = st.radio(
+                "🧠 Modalità Studio:",
+                ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
+                index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode)
+            )
+            
+            new_response_style = st.select_slider(
+                "📏 Lunghezza Risposta:",
+                options=["Sintetico", "Bilanciato", "Esaustivo"],
+                value=st.session_state.response_style
+            )
+            
+            # Mostriamo sempre lo slider nel form per semplicità, ma lo useremo solo in modalità Quiz
+            new_num_questions = st.slider("Numero Domande (solo per Quiz):", 5, 20, st.session_state.num_questions)
+            
+            submit_button = st.form_submit_button(label="✅ Applica Modifiche")
+            
+            if submit_button:
+                # Aggiorniamo lo stato solo alla pressione del tasto
+                st.session_state.study_mode = new_study_mode
+                st.session_state.response_style = new_response_style
+                st.session_state.num_questions = new_num_questions
+                # Opzionale: Se vuoi resettare la chat SOLO quando si preme applica, decommenta la riga sotto:
+                # reset_conversation() 
+                st.rerun()
 
         st.markdown("---")
-        if st.button("🔄 Nuova Chat", use_container_width=True):
+        if st.button("🔄 Cancella Chat e Ricomincia", use_container_width=True):
             reset_conversation()
             st.rerun()
 
@@ -173,8 +183,12 @@ def main():
         vectorstore = st.session_state.vectorstore
         rag_chain = build_rag_chain(vectorstore)
         
-        # Recupero istruzione dinamica
-        system_instr = get_system_instruction(study_mode, response_style, num_questions)
+        # Recupero parametri dallo stato (aggiornati dal form)
+        system_instr = get_system_instruction(
+            st.session_state.study_mode, 
+            st.session_state.response_style, 
+            st.session_state.num_questions
+        )
 
         # Chat UI
         chat_container = st.container()
@@ -190,8 +204,8 @@ def main():
 
         # Input
         placeholder = "Fai una domanda..."
-        if study_mode == "❓ Simulazione Quiz":
-            placeholder = f"Scrivi 'VIA' per generare {num_questions} domande..."
+        if st.session_state.study_mode == "❓ Simulazione Quiz":
+            placeholder = f"Scrivi 'VIA' per generare {st.session_state.num_questions} domande..."
 
         if user_input := st.chat_input(placeholder):
             st.session_state.messages.append({"role": "user", "content": user_input})
@@ -199,7 +213,6 @@ def main():
                 st.markdown(user_input)
 
             with chat_container.chat_message("assistant", avatar="🤖"):
-                # Passiamo l'istruzione specifica a runtime
                 response_stream = rag_chain.stream({
                     "input": user_input,
                     "system_instruction": system_instr

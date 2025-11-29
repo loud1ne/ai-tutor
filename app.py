@@ -79,7 +79,7 @@ def clear_user_history(username):
     conn.commit()
     conn.close()
 
-# --- 3. LOGICA AI (BASE FORNITA + GENERAL CHAT) ---
+# --- 3. LOGICA AI ---
 
 @st.cache_resource(show_spinner=False)
 def get_local_embeddings():
@@ -98,7 +98,6 @@ def get_pdf_text(uploaded_file):
     return text
 
 def build_rag_chain(vectorstore):
-    """Chain per RAG (quando c'è il PDF) - AI NON MODIFICATA"""
     retriever = vectorstore.as_retriever()
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
     
@@ -111,7 +110,6 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_general_response(user_input, system_instruction):
-    """Chain per Chat Generale (senza PDF) - AI NON MODIFICATA"""
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.4)
     messages = [
         SystemMessage(content=system_instruction),
@@ -128,7 +126,6 @@ def get_system_instruction(mode, style, num_questions):
     }
     style_text = style_map.get(style, "Rispondi normalmente.")
 
-    # Rimossa Mappa Concettuale, aggiunto supporto generico
     if mode == "💬 Chat / Spiegazione":
         role = f"Sei un tutor universitario esperto. Se non hai documenti, rispondi usando la tua conoscenza generale. {style_text}"
     elif mode == "❓ Simulazione Quiz":
@@ -141,10 +138,18 @@ def get_system_instruction(mode, style, num_questions):
 
     return f"RUOLO: {role}"
 
+# --- HELPER PER BLOCCARE LA UI ---
+def lock_ui():
+    st.session_state.processing = True
+
 # --- 4. INTERFACCIA MAIN ---
 
 def main():
     init_db()
+    
+    # Inizializza stato di processing se non esiste
+    if "processing" not in st.session_state:
+        st.session_state.processing = False
     
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
 
@@ -184,9 +189,13 @@ def main():
         return
 
     # --- APP DOPO LOGIN ---
+    
+    # Variabile per disabilitare i controlli
+    is_locked = st.session_state.processing
+
     with st.sidebar:
         st.write(f"👤 Utente: **{st.session_state.user_id}**")
-        if st.button("Logout"):
+        if st.button("Logout", disabled=is_locked):
             st.session_state.user_id = None
             st.session_state.messages = []
             if "vectorstore" in st.session_state: del st.session_state.vectorstore
@@ -199,38 +208,37 @@ def main():
             api_key = st.secrets["GOOGLE_API_KEY"]
             st.success("✅ API Key Cloud Attiva")
         else:
-            api_key = st.text_input("🔑 Google API Key", type="password")
+            api_key = st.text_input("🔑 Google API Key", type="password", disabled=is_locked)
 
-        # Inizializza le variabili di sessione per le impostazioni
         if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
         if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
         if "num_questions" not in st.session_state: st.session_state.num_questions = 5
 
-        # --- SEZIONE IMPOSTAZIONI (SENZA FORM) ---
+        # --- SEZIONE IMPOSTAZIONI (DISABILITATA SE IN ELABORAZIONE) ---
         st.subheader("Studio")
         
-        # Le modifiche qui aggiornano immediatamente lo stato e ricaricano l'app (comportamento standard Streamlit)
-        # Questo soddisfa la richiesta di "applicare da sole"
         st.session_state.study_mode = st.radio(
             "🧠 Modalità Studio:",
             ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
-            index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode)
+            index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode),
+            disabled=is_locked
         )
         
         st.session_state.response_style = st.select_slider(
             "📏 Lunghezza:", 
             options=["Sintetico", "Bilanciato", "Esaustivo"], 
-            value=st.session_state.response_style
+            value=st.session_state.response_style,
+            disabled=is_locked
         )
         
         st.session_state.num_questions = st.slider(
             "Domande Quiz:", 
             5, 20, 
-            st.session_state.num_questions
+            st.session_state.num_questions,
+            disabled=is_locked
         )
         
-        # Tasto per cancellare la storia
-        if st.button("🗑️ Cancella Storia Utente"):
+        if st.button("🗑️ Cancella Storia Utente", disabled=is_locked):
             clear_user_history(st.session_state.user_id)
             st.session_state.messages = []
             st.rerun()
@@ -241,25 +249,22 @@ def main():
     
     os.environ["GOOGLE_API_KEY"] = api_key
 
-    # --- LOGICA IBRIDA (FILE vs GENERAL) ---
+    # --- LOGICA IBRIDA ---
     pdf_mode = False
     
-    # 1. Gestione PDF
     if "vectorstore" in st.session_state and st.session_state.vectorstore is not None:
         pdf_mode = True
-        # UI compatta per il file attivo
         with st.container():
             col1, col2 = st.columns([3, 1])
             col1.success(f"📂 **{st.session_state.get('current_filename', 'Doc')}** attivo.")
-            if col2.button("❌ Chiudi File"):
+            if col2.button("❌ Chiudi File", disabled=is_locked):
                 del st.session_state.vectorstore
                 if "current_filename" in st.session_state: del st.session_state.current_filename
                 st.rerun()
     else:
-        # Se non c'è il file, mostriamo l'uploader (ma non blocca la chat)
         with st.expander("📂 Carica PDF (Opzionale)", expanded=False):
-            uploaded_file = st.file_uploader("Trascina qui le dispense", type="pdf")
-            if uploaded_file:
+            uploaded_file = st.file_uploader("Trascina qui le dispense", type="pdf", disabled=is_locked)
+            if uploaded_file and not is_locked:
                 with st.status("⚙️ Analisi Documento...") as status:
                     try:
                         raw_text = get_pdf_text(uploaded_file)
@@ -278,16 +283,12 @@ def main():
 
     # --- CHAT UI ---
     
-    # Prepara istruzioni usando lo stato corrente (aggiornato automaticamente dalla sidebar)
     system_instr = get_system_instruction(st.session_state.study_mode, st.session_state.response_style, st.session_state.num_questions)
-
-    # Carica Storia
     db_history = load_chat_history(st.session_state.user_id)
     st.session_state.messages = db_history
 
     chat_container = st.container()
     with chat_container:
-        # Messaggio di benvenuto contestuale
         if not st.session_state.messages:
             if pdf_mode:
                 st.info("👋 Ciao! Sono pronto a rispondere alle domande sul **PDF caricato**.")
@@ -299,14 +300,11 @@ def main():
             with st.chat_message(message["role"], avatar=avatar):
                 st.markdown(message["content"])
 
-    # Input Bar
+    # Input Bar con Callback di Blocco
     placeholder = "Fai una domanda sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
     
-    if user_input := st.chat_input(placeholder):
-        # Quando l'utente preme invio, lo script riesegue.
-        # Le impostazioni usate sono quelle visibili ORA nella sidebar.
-        # Poiché l'interfaccia si blocca durante l'elaborazione, l'utente non può cambiarle *mentre* l'AI risponde.
-        
+    # 'on_submit=lock_ui' viene chiamato PRIMA del rerun, bloccando l'interfaccia al prossimo render
+    if user_input := st.chat_input(placeholder, on_submit=lock_ui, disabled=is_locked):
         save_message_to_db(st.session_state.user_id, "user", user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
         with chat_container.chat_message("user", avatar="🧑‍🎓"):
@@ -316,7 +314,6 @@ def main():
             with st.spinner("Sto pensando..."):
                 try:
                     if pdf_mode:
-                        # RAG: Risponde usando il PDF
                         rag_chain = build_rag_chain(st.session_state.vectorstore)
                         response = rag_chain.invoke({
                             "input": user_input,
@@ -324,7 +321,6 @@ def main():
                         })
                         answer = response['answer']
                     else:
-                        # GENERAL: Risponde come Chatbot normale
                         answer = get_general_response(user_input, system_instr)
                     
                     st.markdown(answer)
@@ -333,6 +329,11 @@ def main():
                 
                 except Exception as e:
                     st.error(f"Errore API: {e}")
+                
+                finally:
+                    # SBLOCCA UI AL TERMINE
+                    st.session_state.processing = False
+                    st.rerun()
 
 if __name__ == '__main__':
     main()

@@ -80,7 +80,7 @@ def clear_user_history(username):
     conn.commit()
     conn.close()
 
-# --- 3. RENDERER GRAFICI (MIGLIORATO) ---
+# --- 3. RENDERER GRAFICI (FIX REGEX) ---
 
 def mermaid(code: str):
     """Renderizza diagrammi Mermaid.js"""
@@ -122,8 +122,9 @@ def get_pdf_text(uploaded_file):
 
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
-    # Usa gemini-1.5-flash o gemini-1.5-pro (NON 2.5)
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+    
+    # --- MODELLO IMPOSTATO COME RICHIESTO ---
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -142,7 +143,6 @@ def get_system_instruction(mode, style, num_questions):
     style_text = style_map.get(style, "Rispondi normalmente.")
 
     if mode == "🗺️ Mappa Concettuale":
-        # Prompt rafforzato per evitare errori di sintassi
         role = ("Sei un esperto di visualizzazione dati. "
                 "Genera il codice per un diagramma Mermaid.js (preferisci 'graph TD' per la compatibilità) che riassume i concetti chiave. "
                 "IMPORTANTE: Restituisci il codice all'interno di un blocco ```mermaid. "
@@ -294,7 +294,6 @@ def main():
             for message in st.session_state.messages:
                 avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
                 with st.chat_message(message["role"], avatar=avatar):
-                    # Controlla se è codice mermaid
                     code_found = extract_mermaid_code(message["content"])
                     if code_found:
                         mermaid(code_found)
@@ -317,7 +316,6 @@ def main():
                         })
                         answer = response['answer']
                         
-                        # LOGICA MIGLIORATA PER VISUALIZZAZIONE
                         mermaid_code = extract_mermaid_code(answer)
                         if mermaid_code:
                             mermaid(mermaid_code)
@@ -328,7 +326,8 @@ def main():
                         st.session_state.messages.append({"role": "assistant", "content": answer})
                     
                     except Exception as e:
-                        st.error(f"Errore durante la generazione: {e}")
+                        # Se fallisce con gemini-2.5-pro, l'errore apparirà qui
+                        st.error(f"Errore API (probabile modello inesistente o chiave invalida): {e}")
 
     elif not file_processed and api_key:
         st.info("👆 Carica un PDF per iniziare.")

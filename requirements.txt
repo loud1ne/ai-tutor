@@ -1,10 +1,8 @@
 streamlit
 pypdf
-langchain
-langchain-community
-langchain-huggingface
-langchain-google-genai
-langchain-text-splitters
-langchain-core
+langchain==0.2.16
+langchain-community==0.2.16
+langchain-core==0.2.38
+langchain-google-genai==1.0.10
 faiss-cpu
 sentence-transformers

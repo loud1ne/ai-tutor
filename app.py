@@ -100,7 +100,7 @@ def get_pdf_text(uploaded_file):
 def build_rag_chain(vectorstore):
     """Chain per RAG (quando c'è il PDF) - AI NON MODIFICATA"""
     retriever = vectorstore.as_retriever()
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -324,3 +324,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

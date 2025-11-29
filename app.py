@@ -8,7 +8,7 @@ import re
 import streamlit.components.v1 as components
 
 # Importiamo la grafica
-import styles 
+import styles
 
 # --- IMPORT LOGICA AI ---
 from pypdf import PdfReader
@@ -336,5 +336,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 

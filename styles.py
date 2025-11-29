@@ -10,17 +10,9 @@ def get_css():
             font-family: 'Poppins', sans-serif;
         }
 
+        /* HEADER E FOOTER PULITI */
         footer {visibility: hidden;}
         header[data-testid="stHeader"] {background: transparent;}
-
-        /* --- LOGIN BOX --- */
-        .login-container {
-            padding: 2rem;
-            border-radius: 10px;
-            background-color: var(--secondary-background-color);
-            border: 1px solid rgba(128, 128, 128, 0.2);
-            margin-top: 2rem;
-        }
 
         /* --- TITOLO PRINCIPALE --- */
         .main-title {
@@ -39,7 +31,15 @@ def get_css():
             margin-bottom: 2rem;
         }
 
-        /* --- CHAT & CARDS --- */
+        /* --- CONTAINER LOGIN --- */
+        div[data-testid="stForm"] {
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+            background-color: var(--secondary-background-color);
+        }
+
+        /* --- CARD --- */
         .feature-card {
             background-color: var(--secondary-background-color);
             border: 1px solid rgba(128, 128, 128, 0.2);
@@ -49,9 +49,19 @@ def get_css():
             transition: transform 0.3s ease;
             height: 100%;
         }
-        .feature-card:hover { transform: translateY(-5px); border-color: #4A90E2; }
-        .feature-card h3 { color: #4A90E2; font-weight: 600; margin-bottom: 10px; }
         
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: #4A90E2;
+        }
+
+        .feature-card h3 {
+            color: #4A90E2;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        /* --- CHAT STYLES --- */
         .stChatMessage {
             border-radius: 15px;
             border: 1px solid rgba(128, 128, 128, 0.1);
@@ -59,6 +69,11 @@ def get_css():
         .stChatMessage .stImage {
             border-radius: 50%;
             border: 2px solid #4A90E2;
+        }
+        
+        /* Evita trasparenze strane sui messaggi */
+        .stChatMessage {
+            background-color: rgba(255, 255, 255, 0.05);
         }
     </style>
     """
@@ -68,20 +83,20 @@ def get_landing_page_html():
     <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
-                <h3>🔒 Area Personale</h3>
-                <p>Crea un account per salvare le tue dispense e riprendere le conversazioni dove le hai lasciate.</p>
+                <h3>🗣️ Tutor Universale</h3>
+                <p>Fai domande generali di studio o cultura senza bisogno di documenti.</p>
             </div>
         </div>
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
-                <h3>🧠 Mappe Mentali</h3>
-                <p>Genera automaticamente schemi visivi e grafici per memorizzare concetti complessi.</p>
+                <h3>📚 Analisi PDF</h3>
+                <p>Carica le tue dispense per trasformare il Tutor in uno specialista del tuo corso.</p>
             </div>
         </div>
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
-                <h3>📚 RAG Avanzato</h3>
-                <p>Carica PDF infiniti, fai quiz e flashcards con la potenza di Gemini Pro.</p>
+                <h3>🔒 Cloud Safe</h3>
+                <p>I tuoi dati e le chat sono salvati in locale nel database protetto.</p>
             </div>
         </div>
     </div>

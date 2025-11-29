@@ -4,6 +4,7 @@ import warnings
 import time
 import sqlite3
 import hashlib
+import re
 import streamlit.components.v1 as components
 
 # Importiamo la grafica
@@ -79,9 +80,10 @@ def clear_user_history(username):
     conn.commit()
     conn.close()
 
-# --- 3. RENDERER GRAFICI ---
+# --- 3. RENDERER GRAFICI (MIGLIORATO) ---
 
 def mermaid(code: str):
+    """Renderizza diagrammi Mermaid.js"""
     html_code = f"""
     <div class="mermaid">
     {code}
@@ -90,6 +92,15 @@ def mermaid(code: str):
     <script>mermaid.initialize({{startOnLoad:true}});</script>
     """
     components.html(html_code, height=500, scrolling=True)
+
+def extract_mermaid_code(text):
+    """Estrae SOLO il codice Mermaid dal testo usando Regex"""
+    # Cerca il pattern ```mermaid ... ``` ignorando maiuscole/minuscole e spazi extra
+    pattern = r"```mermaid\s*(.*?)\s*```"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1)
+    return None
 
 # --- 4. LOGICA RAG & PDF ---
 
@@ -111,7 +122,8 @@ def get_pdf_text(uploaded_file):
 
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
+    # Usa gemini-1.5-flash o gemini-1.5-pro (NON 2.5)
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -130,10 +142,11 @@ def get_system_instruction(mode, style, num_questions):
     style_text = style_map.get(style, "Rispondi normalmente.")
 
     if mode == "🗺️ Mappa Concettuale":
+        # Prompt rafforzato per evitare errori di sintassi
         role = ("Sei un esperto di visualizzazione dati. "
-                "Genera il codice per un diagramma Mermaid.js (graph TD o mindmap) che riassume i concetti. "
-                "IMPORTANTE: Restituisci SOLO il blocco di codice iniziando con ```mermaid e finendo con ```. "
-                "Non aggiungere altro testo.")
+                "Genera il codice per un diagramma Mermaid.js (preferisci 'graph TD' per la compatibilità) che riassume i concetti chiave. "
+                "IMPORTANTE: Restituisci il codice all'interno di un blocco ```mermaid. "
+                "Non aggiungere spiegazioni esterne.")
     elif mode == "💬 Chat / Spiegazione":
         role = f"Sei un tutor universitario esperto. {style_text}"
     elif mode == "❓ Simulazione Quiz":
@@ -151,10 +164,9 @@ def get_system_instruction(mode, style, num_questions):
 def main():
     init_db()
     
-    # Titolo
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
 
-    # --- GESTIONE LOGIN / REGISTRAZIONE ---
+    # --- LOGIN ---
     if "user_id" not in st.session_state:
         st.session_state.user_id = None
 
@@ -166,8 +178,7 @@ def main():
             with st.form("login_form"):
                 username = st.text_input("Username")
                 password = st.text_input("Password", type="password")
-                submit = st.form_submit_button("Accedi")
-                if submit:
+                if st.form_submit_button("Accedi"):
                     if login_user(username, password):
                         st.session_state.user_id = username
                         st.success(f"Benvenuto {username}!")
@@ -180,8 +191,7 @@ def main():
             with st.form("register_form"):
                 new_user = st.text_input("Nuovo Username")
                 new_pass = st.text_input("Nuova Password", type="password")
-                submit_reg = st.form_submit_button("Registrati")
-                if submit_reg:
+                if st.form_submit_button("Registrati"):
                     if register_user(new_user, new_pass):
                         st.success("Account creato! Ora puoi accedere.")
                     else:
@@ -191,9 +201,7 @@ def main():
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
         return
 
-    # --- APP DOPO IL LOGIN ---
-    
-    # Sidebar
+    # --- APP DOPO LOGIN ---
     with st.sidebar:
         st.write(f"👤 Utente: **{st.session_state.user_id}**")
         if st.button("Logout"):
@@ -203,22 +211,18 @@ def main():
             st.rerun()
         
         st.markdown("---")
-        
         st.header("⚙️ Configurazione")
+        
         if "GOOGLE_API_KEY" in st.secrets:
             api_key = st.secrets["GOOGLE_API_KEY"]
             st.success("✅ API Key Cloud Attiva")
         else:
             api_key = st.text_input("🔑 Google API Key", type="password")
-            if not api_key: st.warning("Inserisci la chiave")
 
         if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
         if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
         if "num_questions" not in st.session_state: st.session_state.num_questions = 5
 
-        # FORM PER LE IMPOSTAZIONI
-        # Quando premi "Applica Modifiche", la pagina si ricarica.
-        # Grazie alla logica sotto, il file NON sparirà.
         with st.form(key="settings_form"):
             st.subheader("Studio")
             new_study_mode = st.radio(
@@ -244,18 +248,12 @@ def main():
         st.info("👈 Configura la chiave API.")
         return
 
-    # --- LOGICA CARICAMENTO PERSISTENTE ---
-    # Se il vectorstore esiste già, mostriamo lo stato "FILE ATTIVO" invece dell'uploader vuoto
-    
+    # --- LOGICA FILE E CHAT ---
     file_processed = False
-    
     if "vectorstore" in st.session_state and st.session_state.vectorstore is not None:
         file_processed = True
-        
-        # UI FILE ATTIVO
         col1, col2 = st.columns([3, 1])
         with col1:
-            # Mostriamo il nome del file salvato o un nome generico
             current_file = st.session_state.get("current_filename", "Dispense Caricate")
             st.success(f"📂 File attivo: **{current_file}**")
         with col2:
@@ -263,14 +261,10 @@ def main():
                 del st.session_state.vectorstore
                 if "current_filename" in st.session_state: del st.session_state.current_filename
                 st.rerun()
-                
     else:
-        # UI UPLOADER (Solo se non c'è nessun file caricato)
         uploaded_file = st.file_uploader("📂 Trascina qui le dispense (PDF)", type="pdf")
-        
         if uploaded_file:
             os.environ["GOOGLE_API_KEY"] = api_key
-            
             with st.status("⚙️ Analisi Documento...") as status:
                 try:
                     raw_text = get_pdf_text(uploaded_file)
@@ -279,26 +273,19 @@ def main():
                         chunks = text_splitter.split_text(raw_text)
                         docs = [Document(page_content=t) for t in chunks]
                         embeddings = get_local_embeddings()
-                        
-                        # Salviamo nel session state
                         st.session_state.vectorstore = FAISS.from_documents(docs, embeddings)
                         st.session_state.current_filename = uploaded_file.name
-                        
                         status.update(label="✅ Pronto!", state="complete")
                         time.sleep(1)
-                        st.rerun() # Ricarica per mostrare la UI "File Attivo"
-                    else: 
-                        st.error("PDF Vuoto")
-                except Exception as e: 
-                    st.error(f"Errore: {e}")
+                        st.rerun()
+                    else: st.error("PDF Vuoto")
+                except Exception as e: st.error(f"Errore: {e}")
 
-    # --- CHAT UI (Mostra solo se il file è processato) ---
-    
+    # --- CHAT UI ---
     if file_processed:
         rag_chain = build_rag_chain(st.session_state.vectorstore)
         system_instr = get_system_instruction(st.session_state.study_mode, st.session_state.response_style, st.session_state.num_questions)
 
-        # CARICAMENTO CRONOLOGIA DAL DB
         db_history = load_chat_history(st.session_state.user_id)
         st.session_state.messages = db_history
 
@@ -307,39 +294,44 @@ def main():
             for message in st.session_state.messages:
                 avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
                 with st.chat_message(message["role"], avatar=avatar):
-                    if "```mermaid" in message["content"]:
-                        clean_code = message["content"].replace("```mermaid", "").replace("```", "")
-                        mermaid(clean_code)
+                    # Controlla se è codice mermaid
+                    code_found = extract_mermaid_code(message["content"])
+                    if code_found:
+                        mermaid(code_found)
                     else:
                         st.markdown(message["content"])
 
         placeholder = "Fai una domanda o chiedi una mappa..."
         if user_input := st.chat_input(placeholder):
             save_message_to_db(st.session_state.user_id, "user", user_input)
-            
             st.session_state.messages.append({"role": "user", "content": user_input})
             with chat_container.chat_message("user", avatar="🧑‍🎓"):
                 st.markdown(user_input)
 
             with chat_container.chat_message("assistant", avatar="🤖"):
                 with st.spinner("Sto pensando..."):
-                    response = rag_chain.invoke({
-                        "input": user_input,
-                        "system_instruction": system_instr
-                    })
-                    answer = response['answer']
+                    try:
+                        response = rag_chain.invoke({
+                            "input": user_input,
+                            "system_instruction": system_instr
+                        })
+                        answer = response['answer']
+                        
+                        # LOGICA MIGLIORATA PER VISUALIZZAZIONE
+                        mermaid_code = extract_mermaid_code(answer)
+                        if mermaid_code:
+                            mermaid(mermaid_code)
+                        else:
+                            st.markdown(answer)
+                            
+                        save_message_to_db(st.session_state.user_id, "assistant", answer)
+                        st.session_state.messages.append({"role": "assistant", "content": answer})
                     
-                    if "```mermaid" in answer:
-                        clean_code = answer.replace("```mermaid", "").replace("```", "")
-                        mermaid(clean_code)
-                    else:
-                        st.markdown(answer)
-
-            save_message_to_db(st.session_state.user_id, "assistant", answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+                    except Exception as e:
+                        st.error(f"Errore durante la generazione: {e}")
 
     elif not file_processed and api_key:
-        st.info("👆 Carica un PDF per iniziare a chattare.")
+        st.info("👆 Carica un PDF per iniziare.")
     else:
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
 

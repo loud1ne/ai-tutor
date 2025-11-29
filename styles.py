@@ -10,12 +10,16 @@ def get_css():
             font-family: 'Poppins', sans-serif;
         }
 
-        /* NASCONDI SOLO IL FOOTER, NON L'HEADER (così il menu funziona) */
         footer {visibility: hidden;}
-        
-        /* Se vuoi nascondere la barra colorata in alto ma tenere il menu: */
-        header[data-testid="stHeader"] {
-            background: transparent;
+        header[data-testid="stHeader"] {background: transparent;}
+
+        /* --- LOGIN BOX --- */
+        .login-container {
+            padding: 2rem;
+            border-radius: 10px;
+            background-color: var(--secondary-background-color);
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            margin-top: 2rem;
         }
 
         /* --- TITOLO PRINCIPALE --- */
@@ -35,50 +39,26 @@ def get_css():
             margin-bottom: 2rem;
         }
 
-        /* --- CARD --- */
+        /* --- CHAT & CARDS --- */
         .feature-card {
             background-color: var(--secondary-background-color);
             border: 1px solid rgba(128, 128, 128, 0.2);
             border-radius: 15px;
             padding: 25px;
             text-align: center;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: transform 0.3s ease;
             height: 100%;
         }
+        .feature-card:hover { transform: translateY(-5px); border-color: #4A90E2; }
+        .feature-card h3 { color: #4A90E2; font-weight: 600; margin-bottom: 10px; }
         
-        .feature-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-            border-color: #4A90E2;
-        }
-
-        .feature-card h3 {
-            color: #4A90E2;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-
-        .feature-card p {
-            color: var(--text-color);
-            font-size: 0.9rem;
-            opacity: 0.8;
-        }
-
-        /* --- CHAT --- */
         .stChatMessage {
             border-radius: 15px;
             border: 1px solid rgba(128, 128, 128, 0.1);
         }
-
         .stChatMessage .stImage {
             border-radius: 50%;
             border: 2px solid #4A90E2;
-        }
-
-        /* --- STATUS BOX --- */
-        div[data-testid="stStatusWidget"] {
-            border-radius: 10px;
-            border: 1px solid #4A90E2;
         }
     </style>
     """
@@ -88,20 +68,20 @@ def get_landing_page_html():
     <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
-                <h3>📚 Riassunti Smart</h3>
-                <p>Carica dispense infinite. Ottieni sintesi chiare, punti chiave e spiegazioni semplificate in secondi.</p>
+                <h3>🔒 Area Personale</h3>
+                <p>Crea un account per salvare le tue dispense e riprendere le conversazioni dove le hai lasciate.</p>
             </div>
         </div>
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
-                <h3>❓ Simulazione Esame</h3>
-                <p>Il sistema si trasforma in un prof severo. Genera domande d'esame realistiche per testarti.</p>
+                <h3>🧠 Mappe Mentali</h3>
+                <p>Genera automaticamente schemi visivi e grafici per memorizzare concetti complessi.</p>
             </div>
         </div>
         <div style="flex: 1; min-width: 250px;">
             <div class="feature-card">
-                <h3>🃏 Flashcards</h3>
-                <p>Genera automaticamente tabelle e schemi Concetto-Definizione pronti per il ripasso veloce.</p>
+                <h3>📚 RAG Avanzato</h3>
+                <p>Carica PDF infiniti, fai quiz e flashcards con la potenza di Gemini Pro.</p>
             </div>
         </div>
     </div>

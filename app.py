@@ -100,7 +100,7 @@ def get_pdf_text(uploaded_file):
 def build_rag_chain(vectorstore):
     """Chain per RAG (quando c'è il PDF) - AI NON MODIFICATA"""
     retriever = vectorstore.as_retriever()
-    llm = ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.3)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -201,27 +201,35 @@ def main():
         else:
             api_key = st.text_input("🔑 Google API Key", type="password")
 
+        # Inizializza le variabili di sessione per le impostazioni
         if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
         if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
         if "num_questions" not in st.session_state: st.session_state.num_questions = 5
 
-        with st.form(key="settings_form"):
-            st.subheader("Studio")
-            # Rimossa "Mappa Concettuale" dalle opzioni
-            new_study_mode = st.radio(
-                "🧠 Modalità Studio:",
-                ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
-                index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode)
-            )
-            new_response_style = st.select_slider("📏 Lunghezza:", options=["Sintetico", "Bilanciato", "Esaustivo"], value=st.session_state.response_style)
-            new_num_questions = st.slider("Domande Quiz:", 5, 20, st.session_state.num_questions)
-            
-            if st.form_submit_button("✅ Applica Modifiche"):
-                st.session_state.study_mode = new_study_mode
-                st.session_state.response_style = new_response_style
-                st.session_state.num_questions = new_num_questions
-                st.rerun()
-
+        # --- SEZIONE IMPOSTAZIONI (SENZA FORM) ---
+        st.subheader("Studio")
+        
+        # Le modifiche qui aggiornano immediatamente lo stato e ricaricano l'app (comportamento standard Streamlit)
+        # Questo soddisfa la richiesta di "applicare da sole"
+        st.session_state.study_mode = st.radio(
+            "🧠 Modalità Studio:",
+            ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
+            index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode)
+        )
+        
+        st.session_state.response_style = st.select_slider(
+            "📏 Lunghezza:", 
+            options=["Sintetico", "Bilanciato", "Esaustivo"], 
+            value=st.session_state.response_style
+        )
+        
+        st.session_state.num_questions = st.slider(
+            "Domande Quiz:", 
+            5, 20, 
+            st.session_state.num_questions
+        )
+        
+        # Tasto per cancellare la storia
         if st.button("🗑️ Cancella Storia Utente"):
             clear_user_history(st.session_state.user_id)
             st.session_state.messages = []
@@ -270,7 +278,7 @@ def main():
 
     # --- CHAT UI ---
     
-    # Prepara istruzioni
+    # Prepara istruzioni usando lo stato corrente (aggiornato automaticamente dalla sidebar)
     system_instr = get_system_instruction(st.session_state.study_mode, st.session_state.response_style, st.session_state.num_questions)
 
     # Carica Storia
@@ -295,6 +303,10 @@ def main():
     placeholder = "Fai una domanda sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
     
     if user_input := st.chat_input(placeholder):
+        # Quando l'utente preme invio, lo script riesegue.
+        # Le impostazioni usate sono quelle visibili ORA nella sidebar.
+        # Poiché l'interfaccia si blocca durante l'elaborazione, l'utente non può cambiarle *mentre* l'AI risponde.
+        
         save_message_to_db(st.session_state.user_id, "user", user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
         with chat_container.chat_message("user", avatar="🧑‍🎓"):
@@ -324,4 +336,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

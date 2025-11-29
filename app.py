@@ -25,20 +25,14 @@ warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
-# --- 2. GESTIONE DATABASE E AUTH (NUOVO) ---
+# --- 2. GESTIONE DATABASE E AUTH ---
 
 def init_db():
-    """Inizializza il database SQLite locale"""
     conn = sqlite3.connect('study_master.db')
     c = conn.cursor()
-    # Tabella Utenti
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, password TEXT)''')
-    # Tabella Messaggi
+    c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS chat_history 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  username TEXT, role TEXT, content TEXT, 
-                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     conn.close()
 
@@ -49,8 +43,7 @@ def register_user(username, password):
     conn = sqlite3.connect('study_master.db')
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
-                  (username, hash_password(password)))
+        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hash_password(password)))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -61,15 +54,13 @@ def register_user(username, password):
 def login_user(username, password):
     conn = sqlite3.connect('study_master.db')
     c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username = ? AND password = ?", 
-              (username, hash_password(password)))
+    c.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, hash_password(password)))
     return c.fetchone() is not None
 
 def save_message_to_db(username, role, content):
     conn = sqlite3.connect('study_master.db')
     c = conn.cursor()
-    c.execute("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
-              (username, role, content))
+    c.execute("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", (username, role, content))
     conn.commit()
     conn.close()
 
@@ -88,10 +79,9 @@ def clear_user_history(username):
     conn.commit()
     conn.close()
 
-# --- 3. RENDERER GRAFICI (NUOVO) ---
+# --- 3. RENDERER GRAFICI ---
 
 def mermaid(code: str):
-    """Renderizza diagrammi Mermaid.js usando un component HTML/JS"""
     html_code = f"""
     <div class="mermaid">
     {code}
@@ -121,7 +111,7 @@ def get_pdf_text(uploaded_file):
 
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3) # Streaming disattivato per Mermaid handling
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -139,7 +129,6 @@ def get_system_instruction(mode, style, num_questions):
     }
     style_text = style_map.get(style, "Rispondi normalmente.")
 
-    # Logica specifica per le modalità
     if mode == "🗺️ Mappa Concettuale":
         role = ("Sei un esperto di visualizzazione dati. "
                 "Genera il codice per un diagramma Mermaid.js (graph TD o mindmap) che riassume i concetti. "
@@ -160,7 +149,7 @@ def get_system_instruction(mode, style, num_questions):
 # --- 5. INTERFACCIA MAIN ---
 
 def main():
-    init_db() # Assicuriamoci che il DB esista
+    init_db()
     
     # Titolo
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
@@ -200,7 +189,7 @@ def main():
         
         st.markdown("---")
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
-        return  # Interrompe l'esecuzione se non loggato
+        return
 
     # --- APP DOPO IL LOGIN ---
     
@@ -210,6 +199,7 @@ def main():
         if st.button("Logout"):
             st.session_state.user_id = None
             st.session_state.messages = []
+            if "vectorstore" in st.session_state: del st.session_state.vectorstore
             st.rerun()
         
         st.markdown("---")
@@ -222,16 +212,18 @@ def main():
             api_key = st.text_input("🔑 Google API Key", type="password")
             if not api_key: st.warning("Inserisci la chiave")
 
-        # Inizializza stati
         if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
         if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
         if "num_questions" not in st.session_state: st.session_state.num_questions = 5
 
+        # FORM PER LE IMPOSTAZIONI
+        # Quando premi "Applica Modifiche", la pagina si ricarica.
+        # Grazie alla logica sotto, il file NON sparirà.
         with st.form(key="settings_form"):
             st.subheader("Studio")
             new_study_mode = st.radio(
                 "🧠 Modalità Studio:",
-                ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards", "🗺️ Mappa Concettuale"], # Nuova modalità
+                ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards", "🗺️ Mappa Concettuale"],
                 index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards", "🗺️ Mappa Concettuale"].index(st.session_state.study_mode)
             )
             new_response_style = st.select_slider("📏 Lunghezza:", options=["Sintetico", "Bilanciato", "Esaustivo"], value=st.session_state.response_style)
@@ -252,14 +244,33 @@ def main():
         st.info("👈 Configura la chiave API.")
         return
 
-    # PDF Uploader
-    uploaded_file = st.file_uploader("📂 Trascina qui le dispense (PDF)", type="pdf")
+    # --- LOGICA CARICAMENTO PERSISTENTE ---
+    # Se il vectorstore esiste già, mostriamo lo stato "FILE ATTIVO" invece dell'uploader vuoto
     
-    if uploaded_file:
-        os.environ["GOOGLE_API_KEY"] = api_key
+    file_processed = False
+    
+    if "vectorstore" in st.session_state and st.session_state.vectorstore is not None:
+        file_processed = True
         
-        # Indicizzazione (Cache semplice su session state per ora)
-        if "vectorstore" not in st.session_state:
+        # UI FILE ATTIVO
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            # Mostriamo il nome del file salvato o un nome generico
+            current_file = st.session_state.get("current_filename", "Dispense Caricate")
+            st.success(f"📂 File attivo: **{current_file}**")
+        with col2:
+            if st.button("❌ Rimuovi File"):
+                del st.session_state.vectorstore
+                if "current_filename" in st.session_state: del st.session_state.current_filename
+                st.rerun()
+                
+    else:
+        # UI UPLOADER (Solo se non c'è nessun file caricato)
+        uploaded_file = st.file_uploader("📂 Trascina qui le dispense (PDF)", type="pdf")
+        
+        if uploaded_file:
+            os.environ["GOOGLE_API_KEY"] = api_key
+            
             with st.status("⚙️ Analisi Documento...") as status:
                 try:
                     raw_text = get_pdf_text(uploaded_file)
@@ -268,62 +279,67 @@ def main():
                         chunks = text_splitter.split_text(raw_text)
                         docs = [Document(page_content=t) for t in chunks]
                         embeddings = get_local_embeddings()
-                        st.session_state.vectorstore = FAISS.from_documents(docs, embeddings)
-                        status.update(label="✅ Pronto!", state="complete")
-                    else: st.error("PDF Vuoto")
-                except Exception as e: st.error(f"Errore: {e}")
-
-        if "vectorstore" in st.session_state:
-            rag_chain = build_rag_chain(st.session_state.vectorstore)
-            system_instr = get_system_instruction(st.session_state.study_mode, st.session_state.response_style, st.session_state.num_questions)
-
-            # CARICAMENTO CRONOLOGIA DAL DB
-            db_history = load_chat_history(st.session_state.user_id)
-            st.session_state.messages = db_history
-
-            chat_container = st.container()
-            with chat_container:
-                for message in st.session_state.messages:
-                    avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
-                    with st.chat_message(message["role"], avatar=avatar):
-                        # Se il messaggio contiene codice mermaid, lo renderizziamo
-                        if "```mermaid" in message["content"]:
-                            clean_code = message["content"].replace("```mermaid", "").replace("```", "")
-                            mermaid(clean_code)
-                        else:
-                            st.markdown(message["content"])
-
-            placeholder = "Fai una domanda o chiedi una mappa..."
-            if user_input := st.chat_input(placeholder):
-                # 1. Salva User Input nel DB
-                save_message_to_db(st.session_state.user_id, "user", user_input)
-                
-                # Aggiorna UI subito
-                st.session_state.messages.append({"role": "user", "content": user_input})
-                with chat_container.chat_message("user", avatar="🧑‍🎓"):
-                    st.markdown(user_input)
-
-                # 2. Genera Risposta AI
-                with chat_container.chat_message("assistant", avatar="🤖"):
-                    with st.spinner("Sto pensando..."):
-                        response = rag_chain.invoke({
-                            "input": user_input,
-                            "system_instruction": system_instr
-                        })
-                        answer = response['answer']
                         
-                        # Controllo se è un grafico Mermaid
-                        if "```mermaid" in answer:
-                            clean_code = answer.replace("```mermaid", "").replace("```", "")
-                            mermaid(clean_code)
-                            # Salviamo comunque il testo raw nel DB
-                        else:
-                            st.markdown(answer)
+                        # Salviamo nel session state
+                        st.session_state.vectorstore = FAISS.from_documents(docs, embeddings)
+                        st.session_state.current_filename = uploaded_file.name
+                        
+                        status.update(label="✅ Pronto!", state="complete")
+                        time.sleep(1)
+                        st.rerun() # Ricarica per mostrare la UI "File Attivo"
+                    else: 
+                        st.error("PDF Vuoto")
+                except Exception as e: 
+                    st.error(f"Errore: {e}")
 
-                # 3. Salva AI Response nel DB
-                save_message_to_db(st.session_state.user_id, "assistant", answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer})
+    # --- CHAT UI (Mostra solo se il file è processato) ---
+    
+    if file_processed:
+        rag_chain = build_rag_chain(st.session_state.vectorstore)
+        system_instr = get_system_instruction(st.session_state.study_mode, st.session_state.response_style, st.session_state.num_questions)
 
+        # CARICAMENTO CRONOLOGIA DAL DB
+        db_history = load_chat_history(st.session_state.user_id)
+        st.session_state.messages = db_history
+
+        chat_container = st.container()
+        with chat_container:
+            for message in st.session_state.messages:
+                avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
+                with st.chat_message(message["role"], avatar=avatar):
+                    if "```mermaid" in message["content"]:
+                        clean_code = message["content"].replace("```mermaid", "").replace("```", "")
+                        mermaid(clean_code)
+                    else:
+                        st.markdown(message["content"])
+
+        placeholder = "Fai una domanda o chiedi una mappa..."
+        if user_input := st.chat_input(placeholder):
+            save_message_to_db(st.session_state.user_id, "user", user_input)
+            
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with chat_container.chat_message("user", avatar="🧑‍🎓"):
+                st.markdown(user_input)
+
+            with chat_container.chat_message("assistant", avatar="🤖"):
+                with st.spinner("Sto pensando..."):
+                    response = rag_chain.invoke({
+                        "input": user_input,
+                        "system_instruction": system_instr
+                    })
+                    answer = response['answer']
+                    
+                    if "```mermaid" in answer:
+                        clean_code = answer.replace("```mermaid", "").replace("```", "")
+                        mermaid(clean_code)
+                    else:
+                        st.markdown(answer)
+
+            save_message_to_db(st.session_state.user_id, "assistant", answer)
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+
+    elif not file_processed and api_key:
+        st.info("👆 Carica un PDF per iniziare a chattare.")
     else:
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
 

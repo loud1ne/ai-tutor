@@ -310,81 +310,37 @@ def main():
     # Variabile di stato per disabilitare i controlli durante l'elaborazione AI
     is_locked = st.session_state.processing
 
+    # --- SIDEBAR: GESTIONE COMPLETA (UPLOAD + SETTINGS) ---
     with st.sidebar:
         st.write(f"👤 Utente: **{st.session_state.user_id}**")
-        if st.button("Logout", disabled=is_locked):
+        if st.button("Logout", disabled=is_locked, use_container_width=True):
             st.session_state.user_id = None
             st.session_state.messages = []
             if "vectorstore" in st.session_state: del st.session_state.vectorstore
             st.rerun()
         
         st.markdown("---")
-        st.header("⚙️ Configurazione")
         
-        # KEY INPUT MASCHERATO E BLOCCABILE
-        if "GOOGLE_API_KEY" in st.secrets:
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            st.success("✅ API Key Cloud Attiva")
-        else:
-            api_key = st.text_input("🔑 Google API Key", type="password", disabled=is_locked)
-
-        # Inizializza session state variabili
-        if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
-        if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
-        if "num_questions" not in st.session_state: st.session_state.num_questions = 5
-
-        # --- SEZIONE IMPOSTAZIONI ---
-        st.subheader("Studio")
+        # === SEZIONE DOCUMENTI (Ancorata qui per essere sempre visibile) ===
+        st.header("📂 Documenti")
         
-        st.session_state.study_mode = st.radio(
-            "🧠 Modalità Studio:",
-            ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
-            index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode),
-            disabled=is_locked
-        )
+        pdf_mode = False # Default
         
-        st.session_state.response_style = st.select_slider(
-            "📏 Lunghezza:", 
-            options=["Sintetico", "Bilanciato", "Esaustivo"], 
-            value=st.session_state.response_style,
-            disabled=is_locked
-        )
-        
-        st.session_state.num_questions = st.slider(
-            "Domande Quiz:", 
-            5, 20, 
-            st.session_state.num_questions,
-            disabled=is_locked
-        )
-        
-        if st.button("🗑️ Cancella Storia Utente", disabled=is_locked):
-            clear_user_history(st.session_state.user_id)
-            st.session_state.messages = []
-            st.rerun()
-
-    if not api_key:
-        st.info("👈 Configura la chiave API nel menu laterale.")
-        return
-    
-    os.environ["GOOGLE_API_KEY"] = api_key
-
-    # --- LOGICA IBRIDA ---
-    pdf_mode = False
-    
-    if "vectorstore" in st.session_state and st.session_state.vectorstore is not None:
-        pdf_mode = True
-        with st.container():
-            col1, col2 = st.columns([3, 1])
-            col1.success(f"📂 **{st.session_state.get('current_filename', 'Doc')}** attivo.")
-            if col2.button("❌ Chiudi File", disabled=is_locked):
+        # Logica: Mostra File Attivo O Uploader
+        if "vectorstore" in st.session_state and st.session_state.vectorstore is not None:
+            pdf_mode = True
+            st.success(f"Attivo: **{st.session_state.get('current_filename', 'Doc')}**")
+            
+            if st.button("❌ Chiudi File", disabled=is_locked, use_container_width=True):
                 del st.session_state.vectorstore
                 if "current_filename" in st.session_state: del st.session_state.current_filename
                 st.rerun()
-    else:
-        with st.expander("📂 Carica PDF (Opzionale)", expanded=False):
-            uploaded_file = st.file_uploader("Trascina qui le dispense", type="pdf", disabled=is_locked)
+        else:
+            # Uploader sempre visibile se nessun file è caricato
+            uploaded_file = st.file_uploader("Carica PDF", type="pdf", disabled=is_locked, label_visibility="visible")
+            
             if uploaded_file and not is_locked:
-                with st.status("⚙️ Analisi Documento...") as status:
+                with st.status("⚙️ Indicizzazione PDF...", expanded=True) as status:
                     try:
                         raw_text = get_pdf_text(uploaded_file)
                         if raw_text:
@@ -394,11 +350,60 @@ def main():
                             embeddings = get_local_embeddings()
                             st.session_state.vectorstore = FAISS.from_documents(docs, embeddings)
                             st.session_state.current_filename = uploaded_file.name
-                            status.update(label="✅ Pronto!", state="complete")
+                            status.update(label="✅ Completato!", state="complete")
                             time.sleep(1)
                             st.rerun()
-                        else: st.error("PDF Vuoto")
-                    except Exception as e: st.error(f"Errore: {e}")
+                        else: 
+                            status.update(label="❌ PDF Vuoto", state="error")
+                            st.error("Il PDF sembra vuoto o non leggibile.")
+                    except Exception as e:
+                        status.update(label="❌ Errore", state="error")
+                        st.error(f"Errore: {e}")
+
+        st.markdown("---")
+        st.header("⚙️ Studio")
+        
+        # API Key
+        if "GOOGLE_API_KEY" in st.secrets:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            # st.success("✅ API Key Cloud Attiva") # Meno rumore visivo
+        else:
+            api_key = st.text_input("🔑 Google API Key", type="password", disabled=is_locked)
+
+        if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
+        if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
+        if "num_questions" not in st.session_state: st.session_state.num_questions = 5
+
+        st.session_state.study_mode = st.radio(
+            "Modalità:",
+            ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
+            index=["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"].index(st.session_state.study_mode),
+            disabled=is_locked
+        )
+        
+        st.session_state.response_style = st.select_slider(
+            "Lunghezza:", 
+            options=["Sintetico", "Bilanciato", "Esaustivo"], 
+            value=st.session_state.response_style,
+            disabled=is_locked
+        )
+        
+        if st.session_state.study_mode == "❓ Simulazione Quiz":
+            st.session_state.num_questions = st.slider(
+                "N. Domande:", 5, 20, st.session_state.num_questions, disabled=is_locked
+            )
+        
+        st.markdown("---")
+        if st.button("🗑️ Reset Chat", disabled=is_locked, use_container_width=True):
+            clear_user_history(st.session_state.user_id)
+            st.session_state.messages = []
+            st.rerun()
+
+    if not api_key:
+        st.info("👈 Configura la chiave API nel menu laterale per iniziare.")
+        return
+    
+    os.environ["GOOGLE_API_KEY"] = api_key
 
     # --- CHAT UI ---
     
@@ -411,16 +416,16 @@ def main():
     with chat_container:
         if not st.session_state.messages:
             if pdf_mode:
-                st.info("👋 Ciao! Sono pronto a rispondere alle domande sul **PDF caricato**. Le mie risposte saranno strettamente basate sul documento.")
+                st.info(f"📂 **{st.session_state.get('current_filename')}** attivo.\n\nFai una domanda specifica sul contenuto del documento.")
             else:
-                st.info("👋 Ciao! Sono il tuo Tutor Generale. Chiedimi qualsiasi cosa o carica un PDF dal menu.")
+                st.info("👋 Ciao! Sono il tuo Tutor. Carica un PDF dalla barra laterale per domande specifiche, o chiedimi qualsiasi cosa per iniziare.")
 
         for message in st.session_state.messages:
             avatar = "🧑‍🎓" if message["role"] == "user" else "🤖"
             with st.chat_message(message["role"], avatar=avatar):
                 st.markdown(message["content"])
 
-    placeholder = "Fai una domanda specifica sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
+    placeholder = "Chiedi al documento..." if pdf_mode else "Fai una domanda..."
     
     # INPUT BAR con callback di blocco
     if user_input := st.chat_input(placeholder, on_submit=lock_ui, disabled=is_locked):
@@ -433,7 +438,7 @@ def main():
 
         # 2. Genera risposta AI
         with chat_container.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Sto pensando... (Gemini 2.5 Flash)"):
+            with st.spinner("Sto elaborando..."):
                 try:
                     if pdf_mode:
                         rag_chain = build_rag_chain(st.session_state.vectorstore)
@@ -450,8 +455,7 @@ def main():
                     st.session_state.messages.append({"role": "assistant", "content": answer})
                 
                 except Exception as e:
-                    st.error(f"Errore API: {e}")
-                    st.warning("Se ricevi un errore 400/404, il modello 'gemini-2.5-flash' potrebbe non essere disponibile pubblicamente sulla tua chiave. Prova 'gemini-1.5-flash'.")
+                    st.error(f"Errore: {e}")
                 
                 finally:
                     # Al termine (successo o errore), sblocca e ricarica

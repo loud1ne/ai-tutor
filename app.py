@@ -190,14 +190,26 @@ def get_pdf_text(uploaded_file):
     return text
 
 def build_rag_chain(vectorstore):
-    retriever = vectorstore.as_retriever()
+    # Aumentiamo k=6 per avere più contesto
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 6})
     
     # --- CONFIGURAZIONE MODELLO ---
-    # Impostato su gemini-2.5-flash come richiesto
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1) # Temperature bassa per fedeltà
     
+    # Prompt STRICT MODE per vincolare al PDF
     prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
+        ("system", """{system_instruction}
+        
+        SEI IN MODALITÀ "DOCUMENTO ATTIVO".
+        
+        REGOLE TASSATIVE (STRICT MODE):
+        1. DEVI rispondere alla domanda dell'utente BASANDOTI ESCLUSIVAMENTE sui seguenti estratti dal documento PDF fornito.
+        2. NON usare la tua conoscenza interna per rispondere a domande che non trovano riscontro nel testo.
+        3. Se l'informazione richiesta non è presente nel documento, DEVI RISPONDERE: "Mi dispiace, ma questa informazione non è presente nel documento PDF caricato." (Puoi suggerire di cercare online se rilevante, ma non inventare la risposta).
+        4. Cita il documento quando possibile per confermare le tue affermazioni.
+        
+        CONTESTO ESTRATTO DAL PDF:
+        {context}"""),
         ("human", "{input}"),
     ])
     
@@ -206,8 +218,7 @@ def build_rag_chain(vectorstore):
 
 def get_general_response(user_input, system_instruction):
     # --- CONFIGURAZIONE MODELLO ---
-    # Impostato su gemini-2.5-flash come richiesto
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5)
     
     messages = [
         SystemMessage(content=system_instruction),
@@ -225,12 +236,12 @@ def get_system_instruction(mode, style, num_questions):
     style_text = style_map.get(style, "Rispondi normalmente.")
 
     if mode == "💬 Chat / Spiegazione":
-        role = f"Sei un tutor universitario esperto. Se non hai documenti, rispondi usando la tua conoscenza generale. {style_text}"
+        role = f"Sei un tutor universitario esperto. {style_text}"
     elif mode == "❓ Simulazione Quiz":
-        role = (f"Sei un professore d'esame. Genera ORA {num_questions} domande difficili sull'argomento. "
+        role = (f"Sei un professore d'esame. Genera ORA {num_questions} domande difficili basate SOLO sul materiale fornito. "
                 "Numera le domande. NON dare le soluzioni.")
     elif mode == "🃏 Flashcards":
-        role = f"Crea materiale di studio schematico. {style_text}. Formatta: **Termine** -> _Definizione_."
+        role = f"Crea materiale di studio schematico basato SOLO sul testo. {style_text}. Formatta: **Termine** -> _Definizione_."
     else:
         role = "Sei un assistente utile."
 
@@ -400,7 +411,7 @@ def main():
     with chat_container:
         if not st.session_state.messages:
             if pdf_mode:
-                st.info("👋 Ciao! Sono pronto a rispondere alle domande sul **PDF caricato**.")
+                st.info("👋 Ciao! Sono pronto a rispondere alle domande sul **PDF caricato**. Le mie risposte saranno strettamente basate sul documento.")
             else:
                 st.info("👋 Ciao! Sono il tuo Tutor Generale. Chiedimi qualsiasi cosa o carica un PDF dal menu.")
 
@@ -409,7 +420,7 @@ def main():
             with st.chat_message(message["role"], avatar=avatar):
                 st.markdown(message["content"])
 
-    placeholder = "Fai una domanda sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
+    placeholder = "Fai una domanda specifica sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
     
     # INPUT BAR con callback di blocco
     if user_input := st.chat_input(placeholder, on_submit=lock_ui, disabled=is_locked):
@@ -422,7 +433,7 @@ def main():
 
         # 2. Genera risposta AI
         with chat_container.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Sto pensando..."):
+            with st.spinner("Sto pensando... (Gemini 2.5 Flash)"):
                 try:
                     if pdf_mode:
                         rag_chain = build_rag_chain(st.session_state.vectorstore)
@@ -449,4 +460,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

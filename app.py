@@ -40,7 +40,7 @@ st.markdown(styles.get_css(), unsafe_allow_html=True)
 
 # Definiamo il modello richiesto
 # Nota: Assicurati di avere accesso a questo modello specifico nella tua API Key
-MODEL_NAME = "gemini-3.0-pro"
+MODEL_NAME = "gemini-3-pro"
 
 # --- 2. GESTIONE DATABASE IBRIDO (SQLITE + FIRESTORE) ---
 
@@ -443,3 +443,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

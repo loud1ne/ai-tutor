@@ -9,7 +9,7 @@ from datetime import datetime
 # Importiamo la grafica
 import styles 
 
-# --- IMPORT LOGICA AI (Corretti per evitare errori di modulo) ---
+# --- IMPORT LOGICA AI ---
 try:
     from pypdf import PdfReader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -17,13 +17,12 @@ try:
     from langchain_community.vectorstores import FAISS
     from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.prompts import ChatPromptTemplate
-    # Questi import richiedono il pacchetto 'langchain' installato dal requirements.txt aggiornato
     from langchain.chains import create_retrieval_chain
     from langchain.chains.combine_documents import create_stuff_documents_chain
     from langchain_core.documents import Document
     from langchain_core.messages import SystemMessage, HumanMessage
 except ImportError as e:
-    st.error(f"Errore di installazione librerie: {e}. Per favore riavvia l'app dopo aver aggiornato requirements.txt")
+    st.error(f"⚠️ Errore critico librerie: {e}. Controlla requirements.txt.")
     st.stop()
 
 # --- SETUP FIREBASE (OPZIONALE) ---
@@ -38,6 +37,10 @@ except ImportError:
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AI Study Master", page_icon="🎓", layout="wide")
 st.markdown(styles.get_css(), unsafe_allow_html=True)
+
+# Definiamo il modello richiesto
+# Nota: Assicurati di avere accesso a questo modello specifico nella tua API Key
+MODEL_NAME = "gemini-3.0-pro"
 
 # --- 2. GESTIONE DATABASE IBRIDO (SQLITE + FIRESTORE) ---
 
@@ -133,10 +136,12 @@ def load_chat_history(username):
         temp_msgs = []
         for doc in docs:
             d = doc.to_dict()
-            ts = d.get('timestamp')
-            if ts:
+            if d.get('timestamp'):
                 temp_msgs.append(d)
+        
+        # Ordina per data
         temp_msgs.sort(key=lambda x: x['timestamp'] if x['timestamp'] else datetime.now())
+        
         for msg in temp_msgs:
             messages.append({"role": msg['role'], "content": msg['content']})
     else:
@@ -183,8 +188,8 @@ def get_pdf_text(uploaded_file):
 
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
-    # Usa gemini-1.5-flash o gemini-1.5-pro per stabilità
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+    # Usa il modello richiesto
+    llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -195,7 +200,8 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_general_response(user_input, system_instruction):
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.4)
+    # Usa il modello richiesto
+    llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0.4)
     messages = [
         SystemMessage(content=system_instruction),
         HumanMessage(content=user_input)
@@ -225,6 +231,7 @@ def get_system_instruction(mode, style, num_questions):
 
 # --- HELPER PER BLOCCARE LA UI ---
 def lock_ui():
+    """Funzione callback chiamata quando l'utente preme invio. Blocca la UI al prossimo render."""
     st.session_state.processing = True
 
 # --- 4. INTERFACCIA MAIN ---
@@ -232,16 +239,18 @@ def lock_ui():
 def main():
     init_db()
     
+    # Inizializza stato elaborazione
     if "processing" not in st.session_state:
         st.session_state.processing = False
     
     st.markdown('<div class="main-title">AI Study Master</div>', unsafe_allow_html=True)
     
+    # Debug info
     db_mode = get_db_mode()
     if db_mode == "firestore":
-        st.markdown('<span style="color:green; font-size:0.8em;">☁️ Cloud Database Attivo</span>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align:center;"><span style="color:green; font-size:0.8em;">☁️ Cloud Database Attivo</span></div>', unsafe_allow_html=True)
     else:
-        st.markdown('<span style="color:orange; font-size:0.8em;">💾 Database Locale (Dati volatili)</span>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align:center;"><span style="color:orange; font-size:0.8em;">💾 Database Locale (Dati volatili)</span></div>', unsafe_allow_html=True)
 
     # --- LOGIN ---
     if "user_id" not in st.session_state:
@@ -274,12 +283,12 @@ def main():
                     else:
                         st.error("Username già esistente.")
         
-        st.markdown("---")
         st.markdown(styles.get_landing_page_html(), unsafe_allow_html=True)
         return
 
     # --- APP DOPO LOGIN ---
     
+    # Variabile di stato per disabilitare i controlli durante l'elaborazione AI
     is_locked = st.session_state.processing
 
     with st.sidebar:
@@ -293,19 +302,23 @@ def main():
         st.markdown("---")
         st.header("⚙️ Configurazione")
         
-        # KEY INPUT MASKED (type='password')
+        # KEY INPUT MASCHERATO E BLOCCABILE
         if "GOOGLE_API_KEY" in st.secrets:
             api_key = st.secrets["GOOGLE_API_KEY"]
             st.success("✅ API Key Cloud Attiva")
         else:
             api_key = st.text_input("🔑 Google API Key", type="password", disabled=is_locked)
 
+        # Inizializza session state variabili
         if "study_mode" not in st.session_state: st.session_state.study_mode = "💬 Chat / Spiegazione"
         if "response_style" not in st.session_state: st.session_state.response_style = "Bilanciato"
         if "num_questions" not in st.session_state: st.session_state.num_questions = 5
 
+        # --- SEZIONE IMPOSTAZIONI ---
         st.subheader("Studio")
         
+        # I widget sono disabilitati se 'is_locked' è True.
+        # Rimuovendo il Form, le modifiche sono immediate (alla prossima iterazione non bloccata)
         st.session_state.study_mode = st.radio(
             "🧠 Modalità Studio:",
             ["💬 Chat / Spiegazione", "❓ Simulazione Quiz", "🃏 Flashcards"],
@@ -333,7 +346,7 @@ def main():
             st.rerun()
 
     if not api_key:
-        st.info("👈 Configura la chiave API.")
+        st.info("👈 Configura la chiave API nel menu laterale.")
         return
     
     os.environ["GOOGLE_API_KEY"] = api_key
@@ -392,12 +405,17 @@ def main():
 
     placeholder = "Fai una domanda sul PDF..." if pdf_mode else "Fai una domanda generale di studio..."
     
+    # INPUT BAR con callback di blocco
+    # on_submit=lock_ui imposta 'processing' a True prima che lo script riparta
     if user_input := st.chat_input(placeholder, on_submit=lock_ui, disabled=is_locked):
+        
+        # 1. Salva subito il messaggio utente
         save_message_to_db(st.session_state.user_id, "user", user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
         with chat_container.chat_message("user", avatar="🧑‍🎓"):
             st.markdown(user_input)
 
+        # 2. Genera risposta AI
         with chat_container.chat_message("assistant", avatar="🤖"):
             with st.spinner("Sto pensando..."):
                 try:
@@ -419,6 +437,7 @@ def main():
                     st.error(f"Errore API: {e}")
                 
                 finally:
+                    # Al termine (successo o errore), sblocca e ricarica
                     st.session_state.processing = False
                     st.rerun()
 

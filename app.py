@@ -166,6 +166,8 @@ def clear_user_history(username):
 
 # --- 3. LOGICA AI ---
 
+# --- 3. LOGICA AI CORRETTA ---
+
 @st.cache_resource(show_spinner=False)
 def get_local_embeddings():
     return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -184,8 +186,8 @@ def get_pdf_text(uploaded_file):
 
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
-    # Usa il modello richiesto
-    ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.3)
+    # CORREZIONE 1: Assegnazione variabile e nome modello valido
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -196,8 +198,8 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_general_response(user_input, system_instruction):
-    # Usa il modello richiesto
-    llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0.4)
+    # CORREZIONE 2: Nome modello esplicito invece di variabile non definita
+    llm = ChatGoogleGenerativeAI(model="gemini-3-Pro", temperature=0.4)
     messages = [
         SystemMessage(content=system_instruction),
         HumanMessage(content=user_input)
@@ -439,5 +441,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 

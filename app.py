@@ -192,10 +192,9 @@ def get_pdf_text(uploaded_file):
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever()
     
-    # --- CONFIGURAZIONE GEMINI 3 PRO ---
-    # Nota: Le API di Google richiedono nomi modello minuscoli. 
-    # Se "gemini-3-pro" da errore, prova "gemini-1.5-pro" o controlla il nome esatto della release.
-    llm = ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.3)
+    # --- CONFIGURAZIONE MODELLO ---
+    # Impostato su gemini-2.5-flash come richiesto
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
     
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", "{system_instruction}\n\nRISPONDI USANDO SOLO QUESTO CONTESTO:\n{context}"),
@@ -206,8 +205,9 @@ def build_rag_chain(vectorstore):
     return create_retrieval_chain(retriever, qa_chain)
 
 def get_general_response(user_input, system_instruction):
-    # --- CONFIGURAZIONE GEMINI 3 PRO ---
-    llm = ChatGoogleGenerativeAI(model="gemini-3-pro", temperature=0.4)
+    # --- CONFIGURAZIONE MODELLO ---
+    # Impostato su gemini-2.5-flash come richiesto
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4)
     
     messages = [
         SystemMessage(content=system_instruction),
@@ -422,7 +422,7 @@ def main():
 
         # 2. Genera risposta AI
         with chat_container.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Sto pensando... (Gemini 3 Pro)"):
+            with st.spinner("Sto pensando... (Gemini 2.5 Flash)"):
                 try:
                     if pdf_mode:
                         rag_chain = build_rag_chain(st.session_state.vectorstore)
@@ -440,7 +440,7 @@ def main():
                 
                 except Exception as e:
                     st.error(f"Errore API: {e}")
-                    st.warning("Suggerimento: Se l'errore è 400/404, controlla il nome esatto del modello in `app.py`. Alcune versioni preview usano nomi come 'gemini-experimental' o 'gemini-1.5-pro'.")
+                    st.warning("Se ricevi un errore 400/404, il modello 'gemini-2.5-flash' potrebbe non essere disponibile pubblicamente sulla tua chiave. Prova 'gemini-1.5-flash'.")
                 
                 finally:
                     # Al termine (successo o errore), sblocca e ricarica
